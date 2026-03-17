@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "@leanprover-community/proofwidgets4": "^0.1.0"
+  }
+}
