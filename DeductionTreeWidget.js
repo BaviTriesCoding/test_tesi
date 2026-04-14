@@ -149,13 +149,11 @@ export default function DeductionWidget(props) {
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
-  const prevPos = useRef(null);
 
   // Forza sempre una nuova chiamata RPC ignorando la cache
   useEffect(() => {
     const pos = props.pos;
     if (!pos || !rs) return;
-    // RIMUOVI il controllo prevPos — lascia che aggiorni ad ogni render
     setError(null);
     rs.call("getDeductionAtCursor", { pos })
       .then((res) => {
@@ -207,6 +205,7 @@ export default function DeductionWidget(props) {
   return React.createElement(
     "div",
     { style: containerStyle },
+    React.createElement("p", { style: { color: "#efefef" }, result }),
     // Intestazione
     React.createElement(
       "div",
