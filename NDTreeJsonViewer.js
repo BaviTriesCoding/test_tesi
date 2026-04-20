@@ -10,18 +10,14 @@ function JsonNode({ data, path = "", depth = 0 }) {
   const [expanded, setExpanded] = useState(depth < 2);
 
   if (data === null) {
-    return React.createElement(
-      "span",
-      { style: { color: "#858585" } },
-      "null"
-    );
+    return React.createElement("span", { style: { color: "#858585" } }, "null");
   }
 
   if (typeof data === "boolean") {
     return React.createElement(
       "span",
       { style: { color: "#569cd6" } },
-      data.toString()
+      data.toString(),
     );
   }
 
@@ -29,7 +25,7 @@ function JsonNode({ data, path = "", depth = 0 }) {
     return React.createElement(
       "span",
       { style: { color: "#b5cea8" } },
-      data.toString()
+      data.toString(),
     );
   }
 
@@ -37,7 +33,7 @@ function JsonNode({ data, path = "", depth = 0 }) {
     return React.createElement(
       "span",
       { style: { color: "#ce9178" } },
-      `"${data}"`
+      `"${data}"`,
     );
   }
 
@@ -59,7 +55,7 @@ function JsonNode({ data, path = "", depth = 0 }) {
         },
         !isEmpty ? (expanded ? "▾" : "▸") : "·",
         " [ ",
-        isEmpty ? " ]" : ""
+        isEmpty ? " ]" : "",
       ),
       expanded && !isEmpty
         ? React.createElement(
@@ -72,22 +68,18 @@ function JsonNode({ data, path = "", depth = 0 }) {
                 React.createElement(
                   "span",
                   { style: { color: "#858585" } },
-                  `[${idx}]: `
+                  `[${idx}]: `,
                 ),
                 React.createElement(JsonNode, {
                   data: item,
                   path: `${path}[${idx}]`,
                   depth: depth + 1,
-                })
-              )
+                }),
+              ),
             ),
-            React.createElement(
-              "span",
-              { style: { color: "#858585" } },
-              "]"
-            )
+            React.createElement("span", { style: { color: "#858585" } }, "]"),
           )
-        : null
+        : null,
     );
   }
 
@@ -110,7 +102,7 @@ function JsonNode({ data, path = "", depth = 0 }) {
         },
         !isEmpty ? (expanded ? "▾" : "▸") : "·",
         " { ",
-        isEmpty ? " }" : ""
+        isEmpty ? " }" : "",
       ),
       expanded && !isEmpty
         ? React.createElement(
@@ -123,23 +115,23 @@ function JsonNode({ data, path = "", depth = 0 }) {
                 React.createElement(
                   "span",
                   { style: { color: "#9cdcfe" } },
-                  `"${key}"`
+                  `"${key}"`,
                 ),
-                React.createElement("span", { style: { color: "#858585" } }, ": "),
+                React.createElement(
+                  "span",
+                  { style: { color: "#858585" } },
+                  ": ",
+                ),
                 React.createElement(JsonNode, {
                   data: data[key],
                   path: `${path}.${key}`,
                   depth: depth + 1,
-                })
-              )
+                }),
+              ),
             ),
-            React.createElement(
-              "span",
-              { style: { color: "#858585" } },
-              "}"
-            )
+            React.createElement("span", { style: { color: "#858585" } }, "}"),
           )
-        : null
+        : null,
     );
   }
 
@@ -210,7 +202,7 @@ export default function NDTreeJsonViewer(props) {
     return React.createElement(
       "div",
       { style: { ...containerStyle, color: "#f44747" } },
-      "⚠ RpcContext non disponibile"
+      "⚠ RpcContext non disponibile",
     );
 
   if (error)
@@ -218,14 +210,14 @@ export default function NDTreeJsonViewer(props) {
       "div",
       { style: { ...containerStyle, color: "#f44747" } },
       "⚠ ",
-      error
+      error,
     );
 
   if (!result)
     return React.createElement(
       "div",
       { style: { ...containerStyle, color: "#858585" } },
-      "Sposta il cursore su un teorema per visualizzare l'NDTree in JSON..."
+      "Sposta il cursore su un teorema per visualizzare l'NDTree in JSON...",
     );
 
   const copyToClipboard = () => {
@@ -245,10 +237,10 @@ export default function NDTreeJsonViewer(props) {
       React.createElement(
         "span",
         { style: { color: "#9cdcfe", fontWeight: "bold" } },
-        result.name
+        result.name,
       ),
       React.createElement("span", { style: { color: "#858585" } }, " : "),
-      React.createElement("span", { style: { color: "#ce9178" } }, result.type)
+      React.createElement("span", { style: { color: "#ce9178" } }, result.type),
     ),
     // Sottotitolo
     React.createElement(
@@ -261,7 +253,7 @@ export default function NDTreeJsonViewer(props) {
           letterSpacing: "0.05em",
         },
       },
-      "TREE IN JSON"
+      "TREE IN JSON",
     ),
     // Pulsanti di controllo
     React.createElement(
@@ -276,16 +268,8 @@ export default function NDTreeJsonViewer(props) {
           },
           onClick: () => setShowRaw(!showRaw),
         },
-        showRaw ? "📋 Vista Albero" : "📄 Vista Raw JSON"
+        showRaw ? "📋 Vista Albero" : "📄 Vista Raw JSON",
       ),
-      React.createElement(
-        "button",
-        {
-          style: buttonStyle,
-          onClick: copyToClipboard,
-        },
-        copySuccess ? "✓ Copiato!" : "📋 Copia JSON"
-      )
     ),
     // Contenuto
     showRaw
@@ -307,7 +291,7 @@ export default function NDTreeJsonViewer(props) {
               overflowY: "auto",
             },
           },
-          JSON.stringify(result.tree, null, 2)
+          JSON.stringify(result.tree, null, 2),
         )
       : React.createElement(
           "div",
@@ -322,7 +306,7 @@ export default function NDTreeJsonViewer(props) {
               overflowY: "auto",
             },
           },
-          React.createElement(JsonNode, { data: result.tree })
-        )
+          React.createElement(JsonNode, { data: result.tree }),
+        ),
   );
 }

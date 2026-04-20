@@ -62,7 +62,7 @@ partial def exprInfo (e : Expr) : MetaM String := do
   | .lam n t b bi =>
     let tStr ← exprInfo t
     let displayName := if isHygienicName n then "✝" else n.toString
-    Meta.withLocalDecl n bi t fun fv => do
+    withLocalDecl n bi t fun fv => do
       let bStr ← exprInfo (b.instantiate1 fv)
       return s!".lam {displayName} : ({tStr}) => ({bStr})"
   | .forallE n t b bi =>
@@ -71,7 +71,7 @@ partial def exprInfo (e : Expr) : MetaM String := do
       return s!"({← exprInfo t}) → ({← exprInfo b})"
     else
       let tStr ← exprInfo t
-      Meta.withLocalDecl n bi t fun fv => do
+      withLocalDecl n bi t fun fv => do
         let bStr ← exprInfo (b.instantiate1 fv)
         return s!"∀ {n} : ({tStr}), ({bStr})"
   | .letE n t v b _   =>
@@ -87,70 +87,83 @@ partial def exprInfo (e : Expr) : MetaM String := do
   where
     isHygienicName (n : Name) : Bool := n.toString.contains "_@" || n.toString.contains "_hyg"
 
-#check Name
-#check Lean.Expr.getAppFnArgs
 
+-- ══════════════════════════════════════════════════════════════════
+-- MAPPING NOMI REGOLE ND
+-- ══════════════════════════════════════════════════════════════════
+
+def ruleNameOf (fn : Name) : String :=
+  match fn with
+  | ``And.intro    => "∧I"
+  | ``And.left     => "∧E₁"
+  | ``And.right    => "∧E₂"
+  | ``Or.inl       => "∨I₁"
+  | ``Or.inr       => "∨I₂"
+  | ``Or.elim      => "∨E"
+  | ``Not.intro    => "¬I"
+  | ``absurd       => "¬E"
+  | ``False.elim   => "⊥E"
+  | ``Exists.intro => "∃I"
+  | ``Exists.elim  => "∃E"
+  | other          => other.toString
+
+-- Per le app: se fn è una costante nota, usa il mapping.
+-- Altrimenti, controlla il tipo di fn per capire se è →E o ∀E.
+def ruleNameOfApp (e : Expr) : MetaM String := do
+  match e with
+  | .const name _ => return ruleNameOf name
+  | _ =>
+    let fnType ← inferType e
+    match fnType with
+    | .forallE _ _ _ _ =>
+      if fnType.isArrow then return "→E"   -- P → Q applicata a P
+      else return "∀E"                     -- ∀ x, P x applicata a x
+    | _ => return s!"{← ppExpr e}"
 
 -- Versione monadica che usa exprInfo
 partial def Lean.Expr.toNDTreeM (e : Expr) : MetaM NDTree := do
   match e with
-  -- per le app, creo un nodo con i figli che sono gli argomenti, e come formula la stringa del tipo dell'applicazione
   | .app _ _ => do
       let (fn, args) := e.getAppFnArgs
+      if fn == ``sorryAx then
+        let resultType ← inferType e
+        return .node [] s!"{← ppExpr resultType}" "sorry"
       let mut argList : List NDTree := []
       for arg in args do
-        let subtree ← arg.toNDTreeM
-        argList := argList ++ [subtree]
-      return .node argList s!"{← exprInfo e}" fn.toString
+        let argType ← inferType arg
+        if !argType.isSort then
+          argList := argList ++ [← arg.toNDTreeM]
+      let resultType ← inferType e
+      return .node argList s!"{← ppExpr resultType}" s!"{← ruleNameOfApp e}"
 
-  | .lam _ _ body _ => do
-      return .node [← body.toNDTreeM] s!"{← exprInfo e}" "λ"
-  | .forallE _ _ body _ => do
-      let subtree ← body.toNDTreeM
-      return subtree
-  | .letE _ _ _ body _ => do
-      let subtree ← body.toNDTreeM
-      return subtree
-  | .mdata _ e => do
-      let subtree ← e.toNDTreeM
-      return subtree
-  | .proj _ _ e => do
-      let subtree ← e.toNDTreeM
-      return subtree
+  -- →I se il binder è una Prop (scarica un'assunzione)
+  -- ∀I se il binder è un Type (introduce una variabile)
+  | .lam n t b bi => withLocalDecl n bi t fun fv => do
+      let tKind ← inferType t
+      let child ← (b.instantiate1 fv).toNDTreeM
+      let lamType ← inferType e
+      let ruleName := if tKind.isProp then "→I" else "∀I"
+      return .node [child] s!"{← ppExpr lamType}" ruleName
 
-  -- tutti i nodi finali li stampiamo come leaf, con la formula che è la stringa del tipo
-  | e => return .leaf (← exprInfo e) false
+  | .forallE n t b bi =>
+      let displayName := if isHygienicName n then "✝" else n.toString
+      let tStr ← ppExpr t
+      if e.isArrow then
+        return .node [← b.toNDTreeM] s!"{displayName} : {tStr}" "∀"
+      else
+        withLocalDecl n bi t fun fv => do
+          return .node [← (b.instantiate1 fv).toNDTreeM] s!"∀{displayName}: {tStr}" "∀"
 
-
-
-open RequestM in
-@[server_rpc_method]
-def getDeductionAtCursor (params : DeductionAtCursorParams) :
-    RequestM (RequestTask DeductionAtCursorResult) :=
-  withWaitFindSnapAtPos params.pos fun snap => do
-    runTermElabM snap do
-    let doc ← readDoc
-    let txt := doc.meta.text  -- FileMap per convertire posizioni
-    let pos := txt.lspPosToUtf8Pos params.pos
-    let l := Elab.InfoTree.goalsAt? txt snap.infoTree pos
-    let [item] := l | throwError "alsfdslfs"
-    let .some name := item.ctxInfo.parentDecl? | throwError "u uu"
-    dbg_trace s!"Found declaration: {name}"
-    let info ← try getConstInfo name
-      catch _ => throwThe RequestError ⟨.invalidParams, s!"no constant named '{name}'"⟩
-      dbg_trace s!"info.name: {info.name},\n
-        info.type: {← ppExpr info.type},\n
-        info.value: {info.value?},\n
-        info.levelParams: {info.levelParams},\n
-        info.all: {info.all}" -- debug, per vedere cosa c'è dentro info
-      let tyStr ← ppExpr info.type
-      match info.value? with
-      | none =>
-        return { thmName := toString name, thmType := toString tyStr}
-      | some proofTerm =>
-        let tree ← proofTerm.toNDTreeM
-        dbg_trace s!"Found proof term for {name}: {tree.toString}"
-        return { thmName := toString name, thmType := toString tyStr }
+  | .letE _ _ _ body _ => body.toNDTreeM
+  | .mdata _ e          => e.toNDTreeM
+  | .proj _ _ e         => e.toNDTreeM
+  | .fvar id => do
+      let decl ← Meta.getFVarLocalDecl (.fvar id)
+      return .leaf (toString (← ppExpr decl.type)) false
+  | e => return .leaf s!"{← ppExpr (← inferType e)}" false
+  where
+    isHygienicName (n : Name) : Bool :=
+      n.toString.contains "_@" || n.toString.contains "_hyg"
 
 -- ══════════════════════════════════════════════════════════════════
 -- RPC METHOD: GET TREE AS JSON
@@ -183,9 +196,6 @@ def getTreeAsJson (params : DeductionAtCursorParams) :
 -- ══════════════════════════════════════════════════════════════════
 -- WIDGET JAVASCRIPT
 -- ══════════════════════════════════════════════════════════════════
-@[widget_module]
-def DeductionTreeWidget : Widget.Module where
-  javascript := include_str "newTry.js"
 
 @[widget_module]
 def NDTreeJsonViewerWidget : Widget.Module where
@@ -208,14 +218,16 @@ theorem Andright (P Q : Prop) (h : P ∧ Q) : Q := by
   cases h with
   | intro _ q => exact q
 
-theorem AndIntro {P Q} (h1 : P) (h2 : Q) : P ∧ Q := by
+axiom P : Prop
+axiom Q : Prop
+theorem AndIntro (h1 : P) (h2 : Q) : P ∧ Q := by
   exact And.intro h1 h2
+#print AndIntro
 
-
-theorem OrIntroLeft (h : P) : P ∨ Q := by
+theorem OrIntroLeft (P Q : Prop) (h : P) : P ∨ Q := by
   apply Or.inl h
 
-theorem OrIntroRight (P Q : Prop) (h : Q) : P ∨ Q := by
+theorem OrIntroRight (P Q: Prop) (h : Q)  : P ∨ Q := by
   apply Or.inr h
 
 theorem OrElim (P Q R : Prop) (h1 : P ∨ Q) (h2 : P → R) (h3 : Q → R) : R := by
@@ -240,6 +252,5 @@ theorem andAnd (A B C : Prop) (h : A ∧ (B ∧ C)) : C := by
   have h1 : B ∧ C := And.right h
   have c : C := And.right h1
   exact c
-
 -- Per disattivare il widget in una sezione:
 show_panel_widgets [- NDTreeJsonViewerWidget]
