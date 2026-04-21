@@ -49,7 +49,7 @@ structure TreeAsJsonResult where
 #check Elab.ContextInfo
 
 partial def exprInfo (e : Expr) : MetaM String := do
-  match e with
+  match ← instantiateMVars e with
   | .bvar idx         => return s!".bvar {idx}"
   | .fvar _ =>
       let decl ← Meta.getFVarLocalDecl e
@@ -95,6 +95,7 @@ partial def exprInfo (e : Expr) : MetaM String := do
 def ruleNameOf (fn : Name) : String :=
   match fn with
   | ``And.intro    => "∧I"
+  | ``And.casesOn  => "∧E"
   | ``And.left     => "∧E₁"
   | ``And.right    => "∧E₂"
   | ``Or.inl       => "∨I₁"
@@ -110,7 +111,7 @@ def ruleNameOf (fn : Name) : String :=
 -- Per le app: se fn è una costante nota, usa il mapping.
 -- Altrimenti, controlla il tipo di fn per capire se è →E o ∀E.
 def ruleNameOfApp (e : Expr) : MetaM String := do
-  match e with
+  match ← instantiateMVars e with
   | .const name _ => return ruleNameOf name
   | _ =>
     let fnType ← inferType e
@@ -120,12 +121,32 @@ def ruleNameOfApp (e : Expr) : MetaM String := do
       else return "∀E"                     -- ∀ x, P x applicata a x
     | _ => return s!"{← ppExpr e}"
 
+partial def aggressiveInstantiateMVars (e: Expr) : MetaM Expr := do
+ let e ← instantiateMVars e
+ match e with
+ | .app _ _ => do
+    match e.withApp fun e a => (e, a) with
+    | (.mvar mid, args) =>
+       match (← getMCtx).dAssignment.find? mid with
+       | some i =>
+          if i.fvars.size == args.size then
+           aggressiveInstantiateMVars (.mvar i.mvarIdPending)
+          else
+           return e
+       | none => return e
+    | _ => e.traverseChildren aggressiveInstantiateMVars
+ | _ => e.traverseChildren aggressiveInstantiateMVars
+
+
 -- Versione monadica che usa exprInfo
-partial def Lean.Expr.toNDTreeM (e : Expr) : MetaM NDTree := do
+partial def Lean.Expr.toNDTreeM (e' : Expr) : MetaM NDTree := do
+  dbg_trace s!"Processing: {← exprInfo e'}"
+  let e ← aggressiveInstantiateMVars e'
+  dbg_trace s!"Becomes: {← exprInfo e}"
   match e with
   | .app _ _ => do
-      let (fn, args) := e.getAppFnArgs
-      if fn == ``sorryAx then
+      let (fn, args) := e.withApp fun e a => (e, a)
+      if fn == const ``sorryAx [] then
         let resultType ← inferType e
         return .node [] s!"{← ppExpr resultType}" "sorry"
       let mut argList : List NDTree := []
@@ -133,19 +154,21 @@ partial def Lean.Expr.toNDTreeM (e : Expr) : MetaM NDTree := do
         let argType ← inferType arg
         if !argType.isSort then
           argList := argList ++ [← arg.toNDTreeM]
-      let resultType ← inferType e
-      return .node argList s!"{← ppExpr resultType}" s!"{← ruleNameOfApp e}"
+      let resultType ← inferType e'
+      return .node argList s!"{← ppExpr resultType}" s!"{← ruleNameOfApp fn}"
 
   -- →I se il binder è una Prop (scarica un'assunzione)
   -- ∀I se il binder è un Type (introduce una variabile)
-  | .lam n t b bi => withLocalDecl n bi t fun fv => do
+  | .lam n t b bi =>
+      let lamType ← ppExpr (← inferType e')  -- CSC: devi farlo PRIMA di withLocalDecl per non catturare la var
       let tKind ← inferType t
-      let child ← (b.instantiate1 fv).toNDTreeM
-      let lamType ← inferType e
       let ruleName := if tKind.isProp then "→I" else "∀I"
-      return .node [child] s!"{← ppExpr lamType}" ruleName
+      withLocalDecl n bi t fun fv => do
+       let child ← (b.instantiate1 fv).toNDTreeM
+       return .node [child] s!"{lamType}" ruleName
 
-  | .forallE n t b bi =>
+  /-  XXX TODO codice bacato
+    | .forallE n t b bi =>
       let displayName := if isHygienicName n then "✝" else n.toString
       let tStr ← ppExpr t
       if e.isArrow then
@@ -155,11 +178,12 @@ partial def Lean.Expr.toNDTreeM (e : Expr) : MetaM NDTree := do
           return .node [← (b.instantiate1 fv).toNDTreeM] s!"∀{displayName}: {tStr}" "∀"
 
   | .letE _ _ _ body _ => body.toNDTreeM
+  | .proj _ _ e         => e.toNDTreeM -/
   | .mdata _ e          => e.toNDTreeM
-  | .proj _ _ e         => e.toNDTreeM
   | .fvar id => do
       let decl ← Meta.getFVarLocalDecl (.fvar id)
       return .leaf (toString (← ppExpr decl.type)) false
+  | .mvar _ => return .leaf s!"{← ppExpr (← inferType e)}" true
   | e => return .leaf s!"{← ppExpr (← inferType e)}" false
   where
     isHygienicName (n : Name) : Bool :=
@@ -184,14 +208,28 @@ def getTreeAsJson (params : DeductionAtCursorParams) :
     let info ← try getConstInfo name
       catch _ => throwThe RequestError ⟨.invalidParams, s!"Costante '{name}' non trovata"⟩
     let tyStr ← ppExpr info.type
-    match info.value? with
-    | none =>
-      let emptyTree := NDTree.unhandled ""
-      return { thmName := toString name, thmType := toString tyStr, treeJson := s!"{toJson emptyTree}" }
-    | some proofTerm =>
-      let tree ← proofTerm.toNDTreeM
-      dbg_trace s!"Found proof term for {name}: {← exprInfo proofTerm}"
-      return { thmName := toString name, thmType := toString tyStr, treeJson := s!"{toJson tree}" }
+    let metavarctx := item.tacticInfo.mctxAfter
+    let younger : Name -> Name -> Bool
+     | .num _ 0, .num _ _ => false
+     | .num _ n, .num _ m => n < m
+     | _, _ => false
+    let mmmid :=
+     metavarctx.eAssignment.foldl (fun m d _ => if younger m.name d.name then m else d) (MVarId.mk (.num (.anonymous) 0))
+    let v := (metavarctx.eAssignment.find? mmmid)
+    metavarctx.decls.forM (fun id i => /- id.withContext -/ do dbg_trace s!"{id.name} : {i.type}")
+    -- metavarctx.eAssignment.forM (fun id e => do dbg_trace s!"{id.name} e↦ {e}")
+    -- metavarctx.dAssignment.forM (fun id i => do dbg_trace s!"{id.name} d↦ {i.fvars} ⊢ {i.mvarIdPending.name}")
+    -- dbg_trace s!"La mvar si chiama {mmmid.name}"
+    withMCtx metavarctx do
+    mmmid.withContext do
+     match v with
+     | none =>
+       let emptyTree := NDTree.unhandled ""
+       return { thmName := toString name, thmType := toString tyStr, treeJson := s!"{toJson emptyTree}" }
+     | some proofTerm =>
+       let tree ← proofTerm.toNDTreeM
+       -- dbg_trace s!"Found proof term for {name}: {← exprInfo proofTerm}"
+       return { thmName := toString name, thmType := toString tyStr, treeJson := s!"{toJson tree}" }
 
 -- ══════════════════════════════════════════════════════════════════
 -- WIDGET JAVASCRIPT
@@ -201,28 +239,47 @@ def getTreeAsJson (params : DeductionAtCursorParams) :
 def NDTreeJsonViewerWidget : Widget.Module where
   javascript := include_str "NDTreeJsonViewer.js"
 
+-- =================
+-- LOGICA
+-- =================
+
+syntax "and_e" term:max (ppSpace colGt (ident <|> hole))* : tactic
+
+macro_rules
+| `(tactic|and_e $h $l*) => `(tactic|refine And.casesOn $h ?_ <;> intros $l*)
+
+
 -- ══════════════════════════════════════════════════════════════════
 -- ATTIVA I WIDGET
 -- ══════════════════════════════════════════════════════════════════
 show_panel_widgets [NDTreeJsonViewerWidget]
 
+set_option pp.proofs true
 
 theorem foo2 (A : Prop) (h : A) : A := by
   exact h
 
 theorem Andleft (P Q : Prop) (h : P ∧ Q) : P := by
-  cases h with
-  | intro p _ => exact p
+ and_e h p _
+ exact p
 
 theorem Andright (P Q : Prop) (h : P ∧ Q) : Q := by
-  cases h with
-  | intro _ q => exact q
+  and_e h _ q
+  exact q
 
-axiom P : Prop
-axiom Q : Prop
-theorem AndIntro (h1 : P) (h2 : Q) : P ∧ Q := by
-  exact And.intro h1 h2
-#print AndIntro
+theorem AndIntro (P Q : Prop) (h1 : P) (h2 : Q) : P ∧ Q := by
+  apply And.intro
+  . exact h1
+  . exact h2
+
+theorem OrIntroLeft3 (P Q : Prop) (h : P) : P -> (P ∧ P ∨ Q) ∨ Q := by
+ exact fun x => Or.inl (Or.inl (And.intro x h))
+
+theorem OrIntroLeft2 (P Q : Prop) (h : P) : P -> (P ∧ P ∨ Q) ∨ Q := by
+  intro x
+  apply Or.inl
+  apply Or.inl
+  apply And.intro x h
 
 theorem OrIntroLeft (P Q : Prop) (h : P) : P ∨ Q := by
   apply Or.inl h
@@ -234,11 +291,16 @@ theorem OrElim (P Q R : Prop) (h1 : P ∨ Q) (h2 : P → R) (h3 : Q → R) : R :
   cases h1 with
   | inl p => apply h2 p
   | inr q => apply h3 q
+#print OrElim
 
 theorem NotIntro (P : Prop) (h : P → False) : ¬P := by
   apply Not.intro h
 
 theorem NotElim (P : Prop) (h1 : ¬P) (h2 : P) : False := by
+  apply h1 h2
+
+theorem NotElim' (P : Prop) (h1 : ¬P) : P → False := by
+  intro h2
   apply h1 h2
 
 theorem foo (A B C D : Prop) (h1: (A ∧ B) ∧ (C ∧ D)) : A ∧ C := by
