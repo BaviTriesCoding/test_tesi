@@ -21,6 +21,13 @@ def NDTree.toString : NDTree → String
   | .node children f rule => s!"Node: {f} (rule: {rule})\n" ++ "\n".intercalate (children.map (toString ·))
   | .unhandled p f => s!"Unhandled node ({p}): {f}"
 
+def NDTree.toJson : NDTree → String
+  | .leaf f isOpen => "{\"formula\":\""++ f ++"\", \"isOpen\":\"" ++ s!"{if isOpen then "true" else "false"}" ++ "\"}"
+  | .node children f rule =>
+      let childrenJson := children.map toJson
+      "{\"formula\":\"" ++ f ++ "\", \"rule\": \"" ++ rule ++ "\", \"premises\": [" ++ String.intercalate ", " childrenJson ++ "]}"
+  | .unhandled p f => "{\"formula\":\"" ++ f ++ "\", \"unhandledProof\": \"" ++ p ++ "\"}"
+
 
 -- ══════════════════════════════════════════════════════════════════
 -- RPC PARAMS & RESULT
@@ -228,7 +235,7 @@ def getTreeAsJson (params : DeductionAtCursorParams) :
       let tree ← proofTerm.toNDTreeM
       -- dbg_trace s!"Found proof term for {name}: {← exprInfo proofTerm}"
       dbg_trace s!"Found proof term for {name}:= {← exprInfo proofTerm} : {← ppExpr (← inferType proofTerm)} == {tyStr}"
-      return { thmName := toString name, thmType := toString tyStr, treeJson := s!"{toJson tree}" }
+      return { thmName := toString name, thmType := toString tyStr, treeJson := s!"{tree.toJson}" }
 
 -- ══════════════════════════════════════════════════════════════════
 -- WIDGET JAVASCRIPT

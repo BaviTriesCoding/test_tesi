@@ -3,146 +3,120 @@ const { useState, useEffect, useContext } = React;
 import { useRpcSession, EditorContext } from "@leanprover/infoview";
 
 // ──────────────────────────────────────────────────────────────────
-// JSON Tree Node Renderer
+// Natural Deduction Tree Node Renderer
 // ──────────────────────────────────────────────────────────────────
 
-function JsonNode({ data, path = "", depth = 0 }) {
-  const [expanded, setExpanded] = useState(depth < 2);
+function NDTreeNode({ node, depth = 0 }) {
+  if (!node) return null;
 
-  if (data === null) {
-    return React.createElement("span", { style: { color: "#858585" } }, "null");
-  }
+  const isLeaf = !node.premises || node.premises.length === 0;
+  const isClosed = node.isOpen === false;
 
-  if (typeof data === "boolean") {
-    return React.createElement(
-      "span",
-      { style: { color: "#569cd6" } },
-      data.toString(),
-    );
-  }
+  const formulaText = node.formula ?? "?";
+  const displayText =
+    isLeaf && isClosed ? `[${formulaText}]` : formulaText;
 
-  if (typeof data === "number") {
-    return React.createElement(
-      "span",
-      { style: { color: "#b5cea8" } },
-      data.toString(),
-    );
-  }
+  const formulaStyle = {
+    color: "#d4d4d4",
+    whiteSpace: "nowrap",
+    fontSize: "13px",
+    fontFamily: "monospace",
+    padding: "1px 2px",
+  };
 
-  if (typeof data === "string") {
-    return React.createElement(
-      "span",
-      { style: { color: "#ce9178" } },
-      `"${data}"`,
-    );
-  }
-
-  // Array
-  if (Array.isArray(data)) {
-    const isEmpty = data.length === 0;
+  // ── Leaf node: no bar, just the formula (possibly bracketed)
+  if (isLeaf) {
     return React.createElement(
       "div",
-      null,
-      React.createElement(
-        "span",
-        {
-          onClick: !isEmpty ? () => setExpanded((e) => !e) : undefined,
-          style: {
-            cursor: !isEmpty ? "pointer" : "default",
-            userSelect: "none",
-            color: "#858585",
-          },
+      {
+        style: {
+          display: "inline-block",
+          textAlign: "center",
+          verticalAlign: "bottom",
+          padding: "0 8px",
         },
-        !isEmpty ? (expanded ? "▾" : "▸") : "·",
-        " [ ",
-        isEmpty ? " ]" : "",
-      ),
-      expanded && !isEmpty
-        ? React.createElement(
-            "div",
-            { style: { marginLeft: "20px" } },
-            data.map((item, idx) =>
-              React.createElement(
-                "div",
-                { key: idx, style: { marginBottom: "3px" } },
-                React.createElement(
-                  "span",
-                  { style: { color: "#858585" } },
-                  `[${idx}]: `,
-                ),
-                React.createElement(JsonNode, {
-                  data: item,
-                  path: `${path}[${idx}]`,
-                  depth: depth + 1,
-                }),
-              ),
-            ),
-            React.createElement("span", { style: { color: "#858585" } }, "]"),
-          )
-        : null,
+      },
+      React.createElement("span", { style: formulaStyle }, displayText),
     );
   }
 
-  // Object
-  if (typeof data === "object") {
-    const keys = Object.keys(data);
-    const isEmpty = keys.length === 0;
-    return React.createElement(
+  // ── Internal node: premises / bar+rule / formula
+  return React.createElement(
+    "div",
+    {
+      style: {
+        display: "inline-block",
+        textAlign: "center",
+        verticalAlign: "bottom",
+        padding: "0 8px",
+      },
+    },
+
+    // ── Premises row (aligned at baseline / bottom)
+    React.createElement(
       "div",
-      null,
-      React.createElement(
-        "span",
-        {
-          onClick: !isEmpty ? () => setExpanded((e) => !e) : undefined,
-          style: {
-            cursor: !isEmpty ? "pointer" : "default",
-            userSelect: "none",
-            color: "#858585",
-          },
+      {
+        style: {
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "flex-end",
+          gap: "2px",
         },
-        !isEmpty ? (expanded ? "▾" : "▸") : "·",
-        " { ",
-        isEmpty ? " }" : "",
+      },
+      node.premises.map((p, i) =>
+        React.createElement(NDTreeNode, { key: i, node: p, depth: depth + 1 }),
       ),
-      expanded && !isEmpty
+    ),
+
+    // ── Horizontal bar + rule name
+    React.createElement(
+      "div",
+      {
+        style: {
+          display: "flex",
+          alignItems: "center",
+          margin: "5px 0 3px 0",
+        },
+      },
+      React.createElement("div", {
+        style: {
+          flex: 1,
+          borderTop: "1.5px solid #858585",
+          minWidth: "30px",
+        },
+      }),
+      node.rule
         ? React.createElement(
-            "div",
-            { style: { marginLeft: "20px" } },
-            keys.map((key) =>
-              React.createElement(
-                "div",
-                { key, style: { marginBottom: "3px" } },
-                React.createElement(
-                  "span",
-                  { style: { color: "#9cdcfe" } },
-                  `"${key}"`,
-                ),
-                React.createElement(
-                  "span",
-                  { style: { color: "#858585" } },
-                  ": ",
-                ),
-                React.createElement(JsonNode, {
-                  data: data[key],
-                  path: `${path}.${key}`,
-                  depth: depth + 1,
-                }),
-              ),
-            ),
-            React.createElement("span", { style: { color: "#858585" } }, "}"),
+            "span",
+            {
+              style: {
+                color: "#9cdcfe",
+                fontSize: "11px",
+                fontStyle: "italic",
+                marginLeft: "7px",
+                whiteSpace: "nowrap",
+                userSelect: "none",
+              },
+            },
+            node.rule,
           )
         : null,
-    );
-  }
+    ),
 
-  return React.createElement("span", null, String(data));
+    // ── formula
+    React.createElement(
+      "div",
+      { style: { display: "flex", justifyContent: "center" } },
+      React.createElement("span", { style: formulaStyle }, displayText),
+    ),
+  );
 }
 
 // ──────────────────────────────────────────────────────────────────
 // Main Widget
 // ──────────────────────────────────────────────────────────────────
 
-export default function NDTreeJsonViewer(props) {
+export default function NDTreeViewer(props) {
   const rs = useRpcSession();
   const ec = useContext(EditorContext);
 
@@ -217,7 +191,7 @@ export default function NDTreeJsonViewer(props) {
     return React.createElement(
       "div",
       { style: { ...containerStyle, color: "#858585" } },
-      "Sposta il cursore su un teorema per visualizzare l'NDTree in JSON...",
+      "Sposta il cursore su un teorema per visualizzare l'NDTree...",
     );
 
   const copyToClipboard = () => {
@@ -230,7 +204,8 @@ export default function NDTreeJsonViewer(props) {
   return React.createElement(
     "div",
     { style: containerStyle },
-    // Intestazione
+
+    // ── Header: theorem name and type
     React.createElement(
       "div",
       { style: headerStyle },
@@ -242,7 +217,8 @@ export default function NDTreeJsonViewer(props) {
       React.createElement("span", { style: { color: "#858585" } }, " : "),
       React.createElement("span", { style: { color: "#ce9178" } }, result.type),
     ),
-    // Sottotitolo
+
+    // ── Subtitle
     React.createElement(
       "div",
       {
@@ -253,9 +229,10 @@ export default function NDTreeJsonViewer(props) {
           letterSpacing: "0.05em",
         },
       },
-      "TREE IN JSON",
+      "ALBERO DI DEDUZIONE NATURALE",
     ),
-    // Pulsanti di controllo
+
+    // ── Toggle button
     React.createElement(
       "div",
       { style: { marginBottom: "8px" } },
@@ -268,10 +245,20 @@ export default function NDTreeJsonViewer(props) {
           },
           onClick: () => setShowRaw(!showRaw),
         },
-        showRaw ? "📋 Vista Albero" : "📄 Vista Raw JSON",
+        showRaw ? "🌲 Vista Albero" : "📄 Vista Raw JSON",
       ),
+      !showRaw &&
+        React.createElement(
+          "button",
+          {
+            style: buttonStyle,
+            onClick: copyToClipboard,
+          },
+          copySuccess ? "✓ Copiato!" : "📋 Copia JSON",
+        ),
     ),
-    // Contenuto
+
+    // ── Content: tree or raw JSON
     showRaw
       ? React.createElement(
           "div",
@@ -287,7 +274,7 @@ export default function NDTreeJsonViewer(props) {
               color: "#ce9178",
               whiteSpace: "pre-wrap",
               wordBreak: "break-word",
-              maxHeight: "400px",
+              maxHeight: "500px",
               overflowY: "auto",
             },
           },
@@ -300,13 +287,17 @@ export default function NDTreeJsonViewer(props) {
               background: "#1a1a1a",
               border: "1px solid #3c3c3c",
               borderRadius: "3px",
-              padding: "8px",
+              padding: "16px",
               overflowX: "auto",
-              maxHeight: "400px",
               overflowY: "auto",
+              maxHeight: "500px",
+              // Centre the whole tree horizontally
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "flex-end",
             },
           },
-          React.createElement(JsonNode, { data: result.tree }),
+          React.createElement(NDTreeNode, { node: result.tree }),
         ),
   );
 }
