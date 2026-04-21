@@ -44,10 +44,7 @@ structure TreeAsJsonResult where
 -- RPC METHOD
 -- ══════════════════════════════════════════════════════════════════
 
-#check ConstantInfo
-#check Elab.GoalsAtResult
-#check Elab.ContextInfo
-
+-- For debugging: it prints the low level details of the term (e.g. bvar vs fvar)
 partial def exprInfo (e : Expr) : MetaM String := do
   match /-← instantiateMVars-/ e with
   | .bvar idx         => return s!".bvar {idx}"
@@ -62,23 +59,19 @@ partial def exprInfo (e : Expr) : MetaM String := do
   | .const name us    => return s!".const {name} {us}"
   | .app fn arg       =>
       return s!".app ({← exprInfo fn}) ({← exprInfo arg})"
-  | .lam n t b bi =>
+  | .lam n t b _ =>
     let tStr ← exprInfo t
     let displayName := if isHygienicName n then "✝" else n.toString
-    /-withLocalDecl n bi t fun fv => do
-      let bStr ← exprInfo (b.instantiate1 fv)
-      return s!".lam {displayName} : ({tStr}) => ({bStr})"-/
-      let bStr ← exprInfo b
-      return s!".lam {displayName} : ({tStr}) => ({bStr})"
-  | .forallE n t b bi =>
+    let bStr ← exprInfo b
+    return s!".lam {displayName} : ({tStr}) => ({bStr})"
+  | .forallE n t b _ =>
     if e.isArrow then
       -- non dipendente: ignora il nome del binder
       return s!"({← exprInfo t}) → ({← exprInfo b})"
     else
       let tStr ← exprInfo t
-      withLocalDecl n bi t fun fv => do
-        let bStr ← exprInfo (b.instantiate1 fv)
-        return s!"∀ {n} : ({tStr}), ({bStr})"
+      let bStr ← exprInfo b
+      return s!"∀ {n} : ({tStr}), ({bStr})"
   | .letE n t v b _   =>
       let tStr ← exprInfo t
       let vStr ← exprInfo v
@@ -276,12 +269,6 @@ theorem AndIntro (P Q : Prop) (h1 : P) (h2 : Q) : P ∧ Q := by
   apply And.intro
   . exact h1
   . exact h2
-
-axiom R : Prop
-theorem OrIntroLeft3 (P Q : Prop) (h : P) : P -> (P ∧ P ∨ Q) ∨ Q := by
- exact fun x => Or.inl (Or.inl (And.intro h x))
-
-
 
 theorem OrIntroLeft2 (P Q : Prop) (h : P) : P -> (P ∧ P ∨ Q) ∨ Q := by
   intro x
