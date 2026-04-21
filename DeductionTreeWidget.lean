@@ -8,17 +8,18 @@ open Lean Meta Server Widget
 abbrev Formula := String -- Quello che c'è scritto nelle foglie
 abbrev ProofMethod := String -- ¬i, ∧e1, ∧e2, ∧i, ∨i1, ∨i2, ∨e, →i, →e, etc.
 abbrev isOpen := Bool --Il booleano è per capire se è una foglia aperta o scaricata
+abbrev Proof := String -- Nei nodi unhandled è la prova non riconosciuta
 
 inductive NDTree where
   | leaf      : Formula → isOpen → NDTree
   | node      : List NDTree → Formula → ProofMethod → NDTree -- La stringa è per il nome del teorema o della regola usata
-  | unhandled : Formula → NDTree                        -- Per rappresentare i nodi che non siamo ancora in grado di gestire
+  | unhandled : Proof → Formula → NDTree                        -- Per rappresentare i nodi che non siamo ancora in grado di gestire
   deriving FromJson, ToJson, Server.RpcEncodable
 
 def NDTree.toString : NDTree → String
   | .leaf f isOpen => s!"{if isOpen then "Open" else "Closed"} leaf: {f}"
   | .node children f rule => s!"Node: {f} (rule: {rule})\n" ++ "\n".intercalate (children.map (toString ·))
-  | .unhandled f => s!"Unhandled node: {f}"
+  | .unhandled p f => s!"Unhandled node ({p}): {f}"
 
 
 -- ══════════════════════════════════════════════════════════════════
@@ -186,7 +187,7 @@ partial def Lean.Expr.toNDTreeM (e' : Expr) : MetaM NDTree := do
       let decl ← Meta.getFVarLocalDecl (.fvar id)
       return .leaf (toString (← ppExpr decl.type)) false
   | .mvar _ => return .leaf s!"{← ppExpr (← inferType e)}" true
-  | e => return .leaf s!"{← ppExpr (← inferType e)}" false
+  | e => return .unhandled s!"{← ppExpr e}" s!"{← ppExpr (← inferType e)}"
   where
     isHygienicName (n : Name) : Bool :=
       n.toString.contains "_@" || n.toString.contains "_hyg"
