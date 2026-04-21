@@ -62,11 +62,11 @@ partial def exprInfo (e : Expr) : MetaM String := do
       return s!".app ({← exprInfo fn}) ({← exprInfo arg})"
   | .lam n t b _ =>
     let tStr ← exprInfo t
-    let displayName := if isHygienicName n then "✝" else n.toString
+    let displayName := n.toString
     let bStr ← exprInfo b
     return s!".lam {displayName} : ({tStr}) => ({bStr})"
   | .forallE n t b _ =>
-    if e.isArrow then
+    if e.isArrow then  -- CSC XXX TODO bug, reimplementare, violiamo l'invariante richiesto
       -- non dipendente: ignora il nome del binder
       return s!"({← exprInfo t}) → ({← exprInfo b})"
     else
@@ -83,8 +83,6 @@ partial def exprInfo (e : Expr) : MetaM String := do
   | .mdata _ e        => exprInfo e
   | .proj tn idx s    =>
       return s!".proj {tn}.{idx} ({← exprInfo s})"
-  where
-    isHygienicName (n : Name) : Bool := n.toString.contains "_@" || n.toString.contains "_hyg"
 
 
 -- ══════════════════════════════════════════════════════════════════
@@ -154,8 +152,13 @@ partial def Lean.Expr.toNDTreeM (e' : Expr) : MetaM NDTree := do
         return .node [] s!"{← ppExpr resultType}" "sorry"
       let mut argList : List NDTree := []
       for arg in args do
+        /-dbg_trace s!"bef {← exprInfo arg}"
+        let _ ← Lean.Meta.check arg
         let argType ← inferType arg
-        if !argType.isSort then
+        dbg_trace s!"mid {← exprInfo argType}"
+        let argSort ← inferType argType
+        dbg_trace s!"aft {← exprInfo argSort}"
+        if argSort.isProp then-/
           argList := argList ++ [← arg.toNDTreeM]
       let resultType ← inferType e'
       return .node argList s!"{← ppExpr resultType}" s!"{← ruleNameOfApp fn}"
@@ -257,6 +260,9 @@ set_option pp.proofs true
 
 theorem foo2 (A : Prop) (h : A) : A := by
   exact h
+
+theorem Andleft' (P Q : Prop) (h : P ∧ Q) : P := by
+ exact And.casesOn h (fun p q => p)
 
 theorem Andleft (P Q : Prop) (h : P ∧ Q) : P := by
  and_e h p _
