@@ -152,13 +152,7 @@ partial def Lean.Expr.toNDTreeM (e' : Expr) : MetaM NDTree := do
         return .node [] s!"{← ppExpr resultType}" "sorry"
       let mut argList : List NDTree := []
       for arg in args do
-        /-dbg_trace s!"bef {← exprInfo arg}"
-        let _ ← Lean.Meta.check arg
-        let argType ← inferType arg
-        dbg_trace s!"mid {← exprInfo argType}"
-        let argSort ← inferType argType
-        dbg_trace s!"aft {← exprInfo argSort}"
-        if argSort.isProp then-/
+        if (← inferType (← inferType arg)).isProp then
           argList := argList ++ [← arg.toNDTreeM]
       let resultType ← inferType e'
       return .node argList s!"{← ppExpr resultType}" s!"{← ruleNameOfApp fn}"
