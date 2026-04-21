@@ -49,11 +49,14 @@ structure TreeAsJsonResult where
 #check Elab.ContextInfo
 
 partial def exprInfo (e : Expr) : MetaM String := do
-  match ← instantiateMVars e with
+  match /-← instantiateMVars-/ e with
   | .bvar idx         => return s!".bvar {idx}"
   | .fvar _ =>
-      let decl ← Meta.getFVarLocalDecl e
-      return s!".fvar {decl.userName}"
+      match (← getLCtx).find? e.fvarId! with
+      | some decl =>
+         return s!".fvar {decl.userName}"
+      | none =>
+         return s!".far UNBOUND"
   | .mvar id          => return s!".mvar {id.name}"
   | .sort lvl         => return s!".sort {lvl}"
   | .const name us    => return s!".const {name} {us}"
@@ -62,8 +65,10 @@ partial def exprInfo (e : Expr) : MetaM String := do
   | .lam n t b bi =>
     let tStr ← exprInfo t
     let displayName := if isHygienicName n then "✝" else n.toString
-    withLocalDecl n bi t fun fv => do
+    /-withLocalDecl n bi t fun fv => do
       let bStr ← exprInfo (b.instantiate1 fv)
+      return s!".lam {displayName} : ({tStr}) => ({bStr})"-/
+      let bStr ← exprInfo b
       return s!".lam {displayName} : ({tStr}) => ({bStr})"
   | .forallE n t b bi =>
     if e.isArrow then
@@ -141,8 +146,12 @@ partial def aggressiveInstantiateMVars (e: Expr) : MetaM Expr := do
 -- Versione monadica che usa exprInfo
 partial def Lean.Expr.toNDTreeM (e' : Expr) : MetaM NDTree := do
   dbg_trace s!"Processing: {← exprInfo e'}"
+  dbg_trace s!"typed as {← ppExpr (← inferType e')}"
   let e ← aggressiveInstantiateMVars e'
   dbg_trace s!"Becomes: {← exprInfo e}"
+  dbg_trace s!"typed as {← ppExpr (← inferType e')}"
+  dbg_trace s!"Env: {← ppExpr (Expr.bvar 0)} {← ppExpr (Expr.bvar 1)} {← ppExpr (Expr.bvar 2)}"
+  dbg_trace s!"-----------------------------------"
   match e with
   | .app _ _ => do
       let (fn, args) := e.withApp fun e a => (e, a)
@@ -209,27 +218,23 @@ def getTreeAsJson (params : DeductionAtCursorParams) :
       catch _ => throwThe RequestError ⟨.invalidParams, s!"Costante '{name}' non trovata"⟩
     let tyStr ← ppExpr info.type
     let metavarctx := item.tacticInfo.mctxAfter
-    let younger : Name -> Name -> Bool
-     | .num _ 0, .num _ _ => false
-     | .num _ n, .num _ m => n < m
-     | _, _ => false
-    let mmmid :=
-     metavarctx.eAssignment.foldl (fun m d _ => if younger m.name d.name then m else d) (MVarId.mk (.num (.anonymous) 0))
-    let v := (metavarctx.eAssignment.find? mmmid)
-    metavarctx.decls.forM (fun id i => /- id.withContext -/ do dbg_trace s!"{id.name} : {i.type}")
-    -- metavarctx.eAssignment.forM (fun id e => do dbg_trace s!"{id.name} e↦ {e}")
-    -- metavarctx.dAssignment.forM (fun id i => do dbg_trace s!"{id.name} d↦ {i.fvars} ⊢ {i.mvarIdPending.name}")
-    -- dbg_trace s!"La mvar si chiama {mmmid.name}"
     withMCtx metavarctx do
-    mmmid.withContext do
-     match v with
-     | none =>
-       let emptyTree := NDTree.unhandled ""
-       return { thmName := toString name, thmType := toString tyStr, treeJson := s!"{toJson emptyTree}" }
-     | some proofTerm =>
-       let tree ← proofTerm.toNDTreeM
-       -- dbg_trace s!"Found proof term for {name}: {← exprInfo proofTerm}"
-       return { thmName := toString name, thmType := toString tyStr, treeJson := s!"{toJson tree}" }
+     let younger : Name -> Name -> Bool
+      | .num _ 0, .num _ _ => false
+      | .num _ n, .num _ m => n < m
+      | _, _ => false
+     let mmmid :=
+      metavarctx.eAssignment.foldl (fun m d _ => if younger m.name d.name then m else d) (MVarId.mk (.num (.anonymous) 0))
+     let proofTerm := Expr.mvar mmmid
+     metavarctx.decls.forM (fun id i => id.withContext do dbg_trace s!"{id.name} : {← exprInfo i.type}")
+     metavarctx.eAssignment.forM (fun id e => id.withContext do dbg_trace s!"{id.name} e↦ {← exprInfo e}")
+     metavarctx.dAssignment.forM (fun id i => id.withContext do dbg_trace s!"{id.name} d↦ {i.fvars} ⊢ {i.mvarIdPending.name}")
+     -- dbg_trace s!"La mvar si chiama {mmmid.name}"
+     mmmid.withContext do
+      let tree ← proofTerm.toNDTreeM
+      -- dbg_trace s!"Found proof term for {name}: {← exprInfo proofTerm}"
+      dbg_trace s!"Found proof term for {name}:= {← exprInfo proofTerm} : {← ppExpr (← inferType proofTerm)} == {tyStr}"
+      return { thmName := toString name, thmType := toString tyStr, treeJson := s!"{toJson tree}" }
 
 -- ══════════════════════════════════════════════════════════════════
 -- WIDGET JAVASCRIPT
@@ -272,8 +277,11 @@ theorem AndIntro (P Q : Prop) (h1 : P) (h2 : Q) : P ∧ Q := by
   . exact h1
   . exact h2
 
+axiom R : Prop
 theorem OrIntroLeft3 (P Q : Prop) (h : P) : P -> (P ∧ P ∨ Q) ∨ Q := by
- exact fun x => Or.inl (Or.inl (And.intro x h))
+ exact fun x => Or.inl (Or.inl (And.intro h x))
+
+
 
 theorem OrIntroLeft2 (P Q : Prop) (h : P) : P -> (P ∧ P ∨ Q) ∨ Q := by
   intro x
