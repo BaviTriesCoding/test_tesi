@@ -52,6 +52,7 @@ structure TreeAsJsonResult where
 -- RPC METHOD
 -- ══════════════════════════════════════════════════════════════════
 
+-- CSC: invece di usare exprInfo si può usare repr che è più verbosa, ma si capisce uguale
 -- For debugging: it prints the low level details of the term (e.g. bvar vs fvar)
 partial def exprInfo (e : Expr) : MetaM String := do
   match /-← instantiateMVars-/ e with
@@ -69,11 +70,11 @@ partial def exprInfo (e : Expr) : MetaM String := do
       return s!".app ({← exprInfo fn}) ({← exprInfo arg})"
   | .lam n t b _ =>
     let tStr ← exprInfo t
-    let displayName := if isHygienicName n then "✝" else n.toString
+    let displayName := n.toString
     let bStr ← exprInfo b
     return s!".lam {displayName} : ({tStr}) => ({bStr})"
   | .forallE n t b _ =>
-    if e.isArrow then
+    if e.isArrow then  -- CSC XXX TODO bug, reimplementare, violiamo l'invariante richiesto
       -- non dipendente: ignora il nome del binder
       return s!"({← exprInfo t}) → ({← exprInfo b})"
     else
@@ -90,8 +91,6 @@ partial def exprInfo (e : Expr) : MetaM String := do
   | .mdata _ e        => exprInfo e
   | .proj tn idx s    =>
       return s!".proj {tn}.{idx} ({← exprInfo s})"
-  where
-    isHygienicName (n : Name) : Bool := n.toString.contains "_@" || n.toString.contains "_hyg"
 
 
 -- ══════════════════════════════════════════════════════════════════
@@ -106,7 +105,7 @@ def ruleNameOf (fn : Name) : String :=
   | ``And.right    => "∧E₂"
   | ``Or.inl       => "∨I₁"
   | ``Or.inr       => "∨I₂"
-  | ``Or.elim      => "∨E"
+  | ``Or.casesOn   => "∨E"
   | ``Not.intro    => "¬I"
   | ``absurd       => "¬E"
   | ``False.elim   => "⊥E"
@@ -116,16 +115,16 @@ def ruleNameOf (fn : Name) : String :=
 
 -- Per le app: se fn è una costante nota, usa il mapping.
 -- Altrimenti, controlla il tipo di fn per capire se è →E o ∀E.
-def ruleNameOfApp (e : Expr) : MetaM String := do
+def ruleNameOfApp (e : Expr) : MetaM (String × Bool) := do
   match ← instantiateMVars e with
-  | .const name _ => return ruleNameOf name
+  | .const name _ => return (ruleNameOf name, false)
   | _ =>
     let fnType ← inferType e
     match fnType with
     | .forallE _ _ _ _ =>
-      if fnType.isArrow then return "→E"   -- P → Q applicata a P
-      else return "∀E"                     -- ∀ x, P x applicata a x
-    | _ => return s!"{← ppExpr e}"
+      if fnType.isArrow then return ("→E", true)   -- P → Q applicata a P
+      else return ("∀E", true)                     -- ∀ x, P x applicata a x
+    | _ => return (s!"{← ppExpr e}", true)
 
 partial def aggressiveInstantiateMVars (e: Expr) : MetaM Expr := do
  let e ← instantiateMVars e
@@ -146,13 +145,15 @@ partial def aggressiveInstantiateMVars (e: Expr) : MetaM Expr := do
 
 -- Versione monadica che usa exprInfo
 partial def Lean.Expr.toNDTreeM (e' : Expr) : MetaM NDTree := do
-  dbg_trace s!"Processing: {← exprInfo e'}"
-  dbg_trace s!"typed as {← ppExpr (← inferType e')}"
+  /- for debugging
+  -- dbg_trace s!"Processing: {← exprInfo e'}"
+  -- dbg_trace s!"typed as {← ppExpr (← inferType e')}" -/
   let e ← aggressiveInstantiateMVars e'
+  /- for debugging
   dbg_trace s!"Becomes: {← exprInfo e}"
   dbg_trace s!"typed as {← ppExpr (← inferType e')}"
   dbg_trace s!"Env: {← ppExpr (Expr.bvar 0)} {← ppExpr (Expr.bvar 1)} {← ppExpr (Expr.bvar 2)}"
-  dbg_trace s!"-----------------------------------"
+  dbg_trace s!"-----------------------------------"-/
   match e with
   | .app _ _ => do
       let (fn, args) := e.withApp fun e a => (e, a)
@@ -160,12 +161,13 @@ partial def Lean.Expr.toNDTreeM (e' : Expr) : MetaM NDTree := do
         let resultType ← inferType e
         return .node [] s!"{← ppExpr resultType}" "sorry"
       let mut argList : List NDTree := []
+      let (rulename, needshead) ← ruleNameOfApp fn
       for arg in args do
-        let argType ← inferType arg
-        if !argType.isSort then
+        if (← inferType (← inferType arg)).isProp then
           argList := argList ++ [← arg.toNDTreeM]
+      if needshead then argList := (← fn.toNDTreeM)::argList
       let resultType ← inferType e'
-      return .node argList s!"{← ppExpr resultType}" s!"{← ruleNameOfApp fn}"
+      return .node argList s!"{← ppExpr resultType}" s!"{rulename}"
 
   -- →I se il binder è una Prop (scarica un'assunzione)
   -- ∀I se il binder è un Type (introduce una variabile)
@@ -227,9 +229,11 @@ def getTreeAsJson (params : DeductionAtCursorParams) :
      let mmmid :=
       metavarctx.eAssignment.foldl (fun m d _ => if younger m.name d.name then m else d) (MVarId.mk (.num (.anonymous) 0))
      let proofTerm := Expr.mvar mmmid
+     /- for debugging
      metavarctx.decls.forM (fun id i => id.withContext do dbg_trace s!"{id.name} : {← exprInfo i.type}")
      metavarctx.eAssignment.forM (fun id e => id.withContext do dbg_trace s!"{id.name} e↦ {← exprInfo e}")
      metavarctx.dAssignment.forM (fun id i => id.withContext do dbg_trace s!"{id.name} d↦ {i.fvars} ⊢ {i.mvarIdPending.name}")
+     -/
      -- dbg_trace s!"La mvar si chiama {mmmid.name}"
      mmmid.withContext do
       let tree ← proofTerm.toNDTreeM
@@ -249,12 +253,11 @@ def NDTreeJsonViewerWidget : Widget.Module where
 -- LOGICA
 -- =================
 
-syntax "and_e" term:max (ppSpace colGt (ident <|> hole))* : tactic
+macro "and_e" h:term:max ppSpace colGt l1:ident ppSpace colGt l2:ident : tactic =>
+ `(tactic|refine And.casesOn $h (fun $l1 $l2 => ?_))
 
-macro_rules
-| `(tactic|and_e $h $l*) => `(tactic|refine And.casesOn $h ?_ <;> intros $l*)
-
-
+macro "or_e" h:term:max ppSpace colGt l1:ident ppSpace colGt l2:ident : tactic =>
+ `(tactic|refine Or.casesOn $h (fun $l1 => ?_) (fun $l2 => ?_))
 -- ══════════════════════════════════════════════════════════════════
 -- ATTIVA I WIDGET
 -- ══════════════════════════════════════════════════════════════════
@@ -265,12 +268,27 @@ set_option pp.proofs true
 theorem foo2 (A : Prop) (h : A) : A := by
   exact h
 
+theorem ImplIntroElim {P Q R : Prop} (h: P -> Q) (p: R -> P) : R -> Q := by
+ intro r
+ apply h
+ apply p
+ exact r
+
+theorem Andleft' (P Q : Prop) (h : P ∧ Q) : P := by
+ exact And.casesOn h (fun p q => p)
+
+theorem Andleft'' (P Q : Prop) (h : P ∧ Q) : P := by
+ apply And.left h
+
 theorem Andleft (P Q : Prop) (h : P ∧ Q) : P := by
- and_e h p _
+ and_e h p _q
  exact p
 
+theorem Andright'' (P Q : Prop) (h : P ∧ Q) : Q := by
+ apply And.right h
+
 theorem Andright (P Q : Prop) (h : P ∧ Q) : Q := by
-  and_e h _ q
+  and_e h _p q
   exact q
 
 theorem AndIntro (P Q : Prop) (h1 : P) (h2 : Q) : P ∧ Q := by
@@ -291,10 +309,9 @@ theorem OrIntroRight (P Q: Prop) (h : Q)  : P ∨ Q := by
   apply Or.inr h
 
 theorem OrElim (P Q R : Prop) (h1 : P ∨ Q) (h2 : P → R) (h3 : Q → R) : R := by
-  cases h1 with
-  | inl p => apply h2 p
-  | inr q => apply h3 q
-#print OrElim
+  or_e h1 p q
+  . apply h2 p
+  . apply h3 q
 
 theorem NotIntro (P : Prop) (h : P → False) : ¬P := by
   apply Not.intro h
