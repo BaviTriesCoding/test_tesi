@@ -97,7 +97,7 @@ def ruleNameOf (fn : Name) : String :=
   | ``And.right    => "∧E₂"
   | ``Or.inl       => "∨I₁"
   | ``Or.inr       => "∨I₂"
-  | ``Or.elim      => "∨E"
+  | ``Or.casesOn   => "∨E"
   | ``Not.intro    => "¬I"
   | ``absurd       => "¬E"
   | ``False.elim   => "⊥E"
@@ -243,12 +243,11 @@ def NDTreeJsonViewerWidget : Widget.Module where
 -- LOGICA
 -- =================
 
-syntax "and_e" term:max (ppSpace colGt (ident <|> hole))* : tactic
+macro "and_e" h:term:max ppSpace colGt l1:ident ppSpace colGt l2:ident : tactic =>
+ `(tactic|refine And.casesOn $h (fun $l1 $l2 => ?_))
 
-macro_rules
-| `(tactic|and_e $h $l*) => `(tactic|refine And.casesOn $h ?_ <;> intros $l*)
-
-
+macro "or_e" h:term:max ppSpace colGt l1:ident ppSpace colGt l2:ident : tactic =>
+ `(tactic|refine Or.casesOn $h (fun $l1 => ?_) (fun $l2 => ?_))
 -- ══════════════════════════════════════════════════════════════════
 -- ATTIVA I WIDGET
 -- ══════════════════════════════════════════════════════════════════
@@ -263,11 +262,11 @@ theorem Andleft' (P Q : Prop) (h : P ∧ Q) : P := by
  exact And.casesOn h (fun p q => p)
 
 theorem Andleft (P Q : Prop) (h : P ∧ Q) : P := by
- and_e h p _
+ and_e h p _q
  exact p
 
 theorem Andright (P Q : Prop) (h : P ∧ Q) : Q := by
-  and_e h _ q
+  and_e h _p q
   exact q
 
 theorem AndIntro (P Q : Prop) (h1 : P) (h2 : Q) : P ∧ Q := by
@@ -288,10 +287,9 @@ theorem OrIntroRight (P Q: Prop) (h : Q)  : P ∨ Q := by
   apply Or.inr h
 
 theorem OrElim (P Q R : Prop) (h1 : P ∨ Q) (h2 : P → R) (h3 : Q → R) : R := by
-  cases h1 with
-  | inl p => apply h2 p
-  | inr q => apply h3 q
-#print OrElim
+  or_e h1 p q
+  . apply h2 p
+  . apply h3 q
 
 theorem NotIntro (P : Prop) (h : P → False) : ¬P := by
   apply Not.intro h
