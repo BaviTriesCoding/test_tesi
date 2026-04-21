@@ -45,6 +45,7 @@ structure TreeAsJsonResult where
 -- RPC METHOD
 -- ══════════════════════════════════════════════════════════════════
 
+-- CSC: invece di usare exprInfo si può usare repr che è più verbosa, ma si capisce uguale
 -- For debugging: it prints the low level details of the term (e.g. bvar vs fvar)
 partial def exprInfo (e : Expr) : MetaM String := do
   match /-← instantiateMVars-/ e with
