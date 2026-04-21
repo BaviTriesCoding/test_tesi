@@ -107,16 +107,16 @@ def ruleNameOf (fn : Name) : String :=
 
 -- Per le app: se fn è una costante nota, usa il mapping.
 -- Altrimenti, controlla il tipo di fn per capire se è →E o ∀E.
-def ruleNameOfApp (e : Expr) : MetaM String := do
+def ruleNameOfApp (e : Expr) : MetaM (String × Bool) := do
   match ← instantiateMVars e with
-  | .const name _ => return ruleNameOf name
+  | .const name _ => return (ruleNameOf name, false)
   | _ =>
     let fnType ← inferType e
     match fnType with
     | .forallE _ _ _ _ =>
-      if fnType.isArrow then return "→E"   -- P → Q applicata a P
-      else return "∀E"                     -- ∀ x, P x applicata a x
-    | _ => return s!"{← ppExpr e}"
+      if fnType.isArrow then return ("→E", true)   -- P → Q applicata a P
+      else return ("∀E", true)                     -- ∀ x, P x applicata a x
+    | _ => return (s!"{← ppExpr e}", true)
 
 partial def aggressiveInstantiateMVars (e: Expr) : MetaM Expr := do
  let e ← instantiateMVars e
@@ -153,11 +153,13 @@ partial def Lean.Expr.toNDTreeM (e' : Expr) : MetaM NDTree := do
         let resultType ← inferType e
         return .node [] s!"{← ppExpr resultType}" "sorry"
       let mut argList : List NDTree := []
+      let (rulename, needshead) ← ruleNameOfApp fn
       for arg in args do
         if (← inferType (← inferType arg)).isProp then
           argList := argList ++ [← arg.toNDTreeM]
+      if needshead then argList := (← fn.toNDTreeM)::argList
       let resultType ← inferType e'
-      return .node argList s!"{← ppExpr resultType}" s!"{← ruleNameOfApp fn}"
+      return .node argList s!"{← ppExpr resultType}" s!"{rulename}"
 
   -- →I se il binder è una Prop (scarica un'assunzione)
   -- ∀I se il binder è un Type (introduce una variabile)
@@ -258,12 +260,24 @@ set_option pp.proofs true
 theorem foo2 (A : Prop) (h : A) : A := by
   exact h
 
+theorem ImplIntroElim {P Q R : Prop} (h: P -> Q) (p: R -> P) : R -> Q := by
+ intro r
+ apply h
+ apply p
+ exact r
+
 theorem Andleft' (P Q : Prop) (h : P ∧ Q) : P := by
  exact And.casesOn h (fun p q => p)
+
+theorem Andleft'' (P Q : Prop) (h : P ∧ Q) : P := by
+ apply And.left h
 
 theorem Andleft (P Q : Prop) (h : P ∧ Q) : P := by
  and_e h p _q
  exact p
+
+theorem Andright'' (P Q : Prop) (h : P ∧ Q) : Q := by
+ apply And.right h
 
 theorem Andright (P Q : Prop) (h : P ∧ Q) : Q := by
   and_e h _p q
