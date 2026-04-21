@@ -137,13 +137,15 @@ partial def aggressiveInstantiateMVars (e: Expr) : MetaM Expr := do
 
 -- Versione monadica che usa exprInfo
 partial def Lean.Expr.toNDTreeM (e' : Expr) : MetaM NDTree := do
-  dbg_trace s!"Processing: {← exprInfo e'}"
-  dbg_trace s!"typed as {← ppExpr (← inferType e')}"
+  /- for debugging
+  -- dbg_trace s!"Processing: {← exprInfo e'}"
+  -- dbg_trace s!"typed as {← ppExpr (← inferType e')}" -/
   let e ← aggressiveInstantiateMVars e'
+  /- for debugging
   dbg_trace s!"Becomes: {← exprInfo e}"
   dbg_trace s!"typed as {← ppExpr (← inferType e')}"
   dbg_trace s!"Env: {← ppExpr (Expr.bvar 0)} {← ppExpr (Expr.bvar 1)} {← ppExpr (Expr.bvar 2)}"
-  dbg_trace s!"-----------------------------------"
+  dbg_trace s!"-----------------------------------"-/
   match e with
   | .app _ _ => do
       let (fn, args) := e.withApp fun e a => (e, a)
@@ -217,14 +219,16 @@ def getTreeAsJson (params : DeductionAtCursorParams) :
      let mmmid :=
       metavarctx.eAssignment.foldl (fun m d _ => if younger m.name d.name then m else d) (MVarId.mk (.num (.anonymous) 0))
      let proofTerm := Expr.mvar mmmid
+     /- for debugging
      metavarctx.decls.forM (fun id i => id.withContext do dbg_trace s!"{id.name} : {← exprInfo i.type}")
      metavarctx.eAssignment.forM (fun id e => id.withContext do dbg_trace s!"{id.name} e↦ {← exprInfo e}")
      metavarctx.dAssignment.forM (fun id i => id.withContext do dbg_trace s!"{id.name} d↦ {i.fvars} ⊢ {i.mvarIdPending.name}")
+     -/
      -- dbg_trace s!"La mvar si chiama {mmmid.name}"
      mmmid.withContext do
       let tree ← proofTerm.toNDTreeM
       -- dbg_trace s!"Found proof term for {name}: {← exprInfo proofTerm}"
-      dbg_trace s!"Found proof term for {name}:= {← exprInfo proofTerm} : {← ppExpr (← inferType proofTerm)} == {tyStr}"
+      -- dbg_trace s!"Found proof term for {name}:= {← exprInfo proofTerm} : {← ppExpr (← inferType proofTerm)} == {tyStr}"
       return { thmName := toString name, thmType := toString tyStr, treeJson := s!"{toJson tree}" }
 
 -- ══════════════════════════════════════════════════════════════════
