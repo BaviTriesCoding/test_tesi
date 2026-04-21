@@ -1,0 +1,10 @@
+name = "DeductionTreeWidget"
+version = "0.1.0"
+defaultTargets = ["DeductionTreeWidget"]
+testDriver = "Tests"
+
+[[lean_lib]]
+name = "DeductionTreeWidget"
+
+[[lean_lib]]
+name = "Tests"
