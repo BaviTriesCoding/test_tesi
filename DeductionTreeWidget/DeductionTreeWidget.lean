@@ -120,46 +120,51 @@ def ruleNameOfApp (e : Expr) : MetaM (String × Bool) := do
   | .const name _ => return (ruleNameOf name, false)
   | _ =>
     let fnType ← inferType e
+    dbg_trace s!"ruleNameOfApp: fnType = {← exprInfo fnType}"
     match fnType with
+    | .app (.const ``Not []) (.fvar _) => return ("¬E", true)  -- P → False applicata a P
     | .forallE _ _ _ _ =>
       if fnType.isArrow then return ("→E", true)   -- P → Q applicata a P
-      else return ("∀E", true)                     -- ∀ x, P x applicata a x
+      else return ("∀E", false)                     -- ∀ x, P x applicata a x
+
     | _ => return (s!"{← ppExpr e}", true)
 
 partial def aggressiveInstantiateMVars (e: Expr) : MetaM Expr := do
- let e ← instantiateMVars e
- match e with
- | .app _ _ => do
+  let e ← instantiateMVars e
+  match e with
+  | .app _ _ => do
     match e.withApp fun e a => (e, a) with
     | (.mvar mid, args) =>
-       match (← getMCtx).dAssignment.find? mid with
-       | some i =>
+        match (← getMCtx).dAssignment.find? mid with
+        | some i =>
           if i.fvars.size == args.size then
-           aggressiveInstantiateMVars (.mvar i.mvarIdPending)
+            aggressiveInstantiateMVars (.mvar i.mvarIdPending)
           else
-           return e
-       | none => return e
+            return e
+        | none => return e
     | _ => e.traverseChildren aggressiveInstantiateMVars
- | _ => e.traverseChildren aggressiveInstantiateMVars
+  | _ => e.traverseChildren aggressiveInstantiateMVars
 
 
 -- Versione monadica che usa exprInfo
 partial def Lean.Expr.toNDTreeM (e' : Expr) : MetaM NDTree := do
-  /- for debugging
+  /- for debugging -/
   -- dbg_trace s!"Processing: {← exprInfo e'}"
-  -- dbg_trace s!"typed as {← ppExpr (← inferType e')}" -/
+  -- dbg_trace s!"typed as {← ppExpr (← inferType e')}"
   let e ← aggressiveInstantiateMVars e'
-  /- for debugging
-  dbg_trace s!"Becomes: {← exprInfo e}"
-  dbg_trace s!"typed as {← ppExpr (← inferType e')}"
-  dbg_trace s!"Env: {← ppExpr (Expr.bvar 0)} {← ppExpr (Expr.bvar 1)} {← ppExpr (Expr.bvar 2)}"
-  dbg_trace s!"-----------------------------------"-/
+  /- for debugging-/
+  -- dbg_trace s!"Becomes: {← exprInfo e}"
+  -- dbg_trace s!"typed as {← ppExpr (← inferType e')}"
+  -- dbg_trace s!"Env: {← ppExpr (Expr.bvar 0)} {← ppExpr (Expr.bvar 1)} {← ppExpr (Expr.bvar 2)}"
+  -- dbg_trace s!"-----------------------------------"
   match e with
   | .app _ _ => do
       let (fn, args) := e.withApp fun e a => (e, a)
-      if fn == const ``sorryAx [] then
+
+      if fn == const ``sorryAx [] then -- caso in cui la prova non sia completa
         let resultType ← inferType e
         return .node [] s!"{← ppExpr resultType}" "sorry"
+
       let mut argList : List NDTree := []
       let (rulename, needshead) ← ruleNameOfApp fn
       for arg in args do
@@ -237,7 +242,6 @@ def getTreeAsJson (params : DeductionAtCursorParams) :
      -- dbg_trace s!"La mvar si chiama {mmmid.name}"
      mmmid.withContext do
       let tree ← proofTerm.toNDTreeM
-      -- dbg_trace s!"Found proof term for {name}: {← exprInfo proofTerm}"
       -- dbg_trace s!"Found proof term for {name}:= {← exprInfo proofTerm} : {← ppExpr (← inferType proofTerm)} == {tyStr}"
       return { thmName := toString name, thmType := toString tyStr, treeJson := s!"{tree.toJson}" }
 
@@ -248,3 +252,23 @@ def getTreeAsJson (params : DeductionAtCursorParams) :
 @[widget_module]
 def NDTreeJsonViewerWidget : Widget.Module where
   javascript := include_str "NDTreeJsonViewer.js"
+
+
+/-
+═══════════════════════════════════════════════════════════════════
+TODO:
+- a) a volte il JSON contiene caratteri non permessi (trovare la lista dei caratteri accettati) ✓
+    json non accetta tutti i caratteri escaped, quindi ho risolto eliminandoli dal json finale nel caso vengano prodotti.
+    const validJSON = res.treeJson.replace(/[\x00-\x1F\x7F-\x9F]/g, '');
+- c) verificare se gli alberi sono esatti e ragionevoli
+- d) problema di taglia degli alberi, che sforano a sinistra
+- e) capire come gestire le foglie scaricate
+- f₁) riconoscere il caso ¬e ✓
+- f₂) riconoscere il caso ¬i
+- f₃) ∀ non testato
+
+
+
+
+════════════════════════════════════════════════════════════════════
+-/

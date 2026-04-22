@@ -73,8 +73,14 @@ theorem NotIntro (P : Prop) (h : P → False) : ¬P := by
 theorem NotElim (P : Prop) (h1 : ¬P) (h2 : P) : False := by
   apply h1 h2
 
-theorem NotElim' (P : Prop) (h1 : ¬P) : P → False := by
+theorem NotElim' (P : Prop) (h1 : ¬P) (h2 : P) : False := by
+  apply absurd h2 h1
+
+theorem NotElim'' (P : Prop) (h1 : ¬P) : P → False := by
   intro h2
+  apply h1 h2
+
+theorem funzionera (P:Prop) (h1: ¬P → P) (h2: ¬P) : P := by
   apply h1 h2
 
 theorem foo (A B C D : Prop) (h1: (A ∧ B) ∧ (C ∧ D)) : A ∧ C := by

@@ -764,7 +764,7 @@ theorem exists_member_subset: ∀A B, A⊆B → (∃X, X∈A) → (∃Y, Y∈B) 
  by K, H done
 
 
--- Esercizio 18: ogni insieme ha un sottoinsieme, prima prova
+-- Esercizio 18: ogni insieme ha un sottoinsieme, prima 9
 theorem exists_subset₁: ∀A, ∃B, B⊆A := by
  assume A: set --Introduzione di ∀, passiamo a dimostrare ∃B, B⊆A
  --Scegliamo ∅ al posto di B, quindi passiamo a dimostrare ∅⊆A

@@ -73,7 +73,7 @@ function NDTreeNode({ node, depth = 0 }) {
       "div",
       {
         style: {
-          position: "relative",   // anchor for the absolute rule label
+          position: "relative", // anchor for the absolute rule label
           margin: "5px 0 3px 0",
         },
       },
@@ -92,7 +92,7 @@ function NDTreeNode({ node, depth = 0 }) {
             {
               style: {
                 position: "absolute",
-                left: "calc(100% + 10px)",   // 10 px gap from bar end
+                left: "calc(100% + 10px)", // 10 px gap from bar end
                 top: "50%",
                 transform: "translateY(-50%)",
                 color: "#9cdcfe",
@@ -135,7 +135,8 @@ export default function NDTreeViewer(props) {
     setError(null);
     rs.call("getTreeAsJson", { pos })
       .then((res) => {
-        const tree = JSON.parse(res.treeJson);
+        const validJSON = res.treeJson.replace(/[\x00-\x1F\x7F-\x9F]/g, '');
+        const tree = JSON.parse(validJSON);
         setResult({
           name: res.thmName,
           type: res.thmType,
@@ -144,7 +145,10 @@ export default function NDTreeViewer(props) {
         });
         setCopySuccess(false);
       })
-      .catch((e) => setError(e.message ?? "Errore RPC sconosciuto"));
+      .catch((e) =>
+        setError(e.message ?? "Errore RPC sconosciuto"),
+      );
+    console.log("Fetching NDTree for position", pos);
   }, [props.pos, rs]);
 
   const containerStyle = {
@@ -219,11 +223,7 @@ export default function NDTreeViewer(props) {
         result.name,
       ),
       React.createElement("span", { style: { color: "#858585" } }, " : "),
-      React.createElement(
-        "span",
-        { style: { color: "#ce9178" } },
-        result.type,
-      ),
+      React.createElement("span", { style: { color: "#ce9178" } }, result.type),
     ),
 
     // ── Subtitle
