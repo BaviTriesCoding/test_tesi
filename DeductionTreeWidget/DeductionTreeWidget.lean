@@ -62,7 +62,7 @@ partial def exprInfo (e : Expr) : MetaM String := do
       | some decl =>
          return s!".fvar {decl.userName}"
       | none =>
-         return s!".far UNBOUND"
+         return s!".fvar {repr e.fvarId!} UNBOUND"
   | .mvar id          => return s!".mvar {id.name}"
   | .sort lvl         => return s!".sort {lvl}"
   | .const name us    => return s!".const {name} {us}"
@@ -134,7 +134,7 @@ partial def aggressiveInstantiateMVars (e: Expr) : MetaM Expr := do
     | (.mvar mid, args) =>
        match (← getMCtx).dAssignment.find? mid with
        | some i =>
-          if i.fvars.size == args.size then
+          if i.fvars.size == args.size && (← i.mvarIdPending.isAssignedOrDelayedAssigned) then
            dbg_trace s!"VARS: {← exprInfo args[0]!} / {← exprInfo i.fvars[0]!}"
            aggressiveInstantiateMVars (.mvar i.mvarIdPending)
           else
