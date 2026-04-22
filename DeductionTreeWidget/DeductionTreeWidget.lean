@@ -158,17 +158,21 @@ partial def Lean.Expr.toNDTreeM (e' : Expr) : MetaM NDTree := do
   match e with
   | .app _ _ => do
       let (fn, args) := e.withApp fun e a => (e, a)
-      if fn == const ``sorryAx [] then
+      match fn with
+      | .const ``sorryAx [] =>
         let resultType ← inferType e
         return .node [] s!"{← ppExpr resultType}" "sorry"
-      let mut argList : List NDTree := []
-      let (rulename, needshead) ← ruleNameOfApp fn
-      for arg in args do
-        if (← inferType (← inferType arg)).isProp then
-          argList := argList ++ [← arg.toNDTreeM]
-      if needshead then argList := (← fn.toNDTreeM)::argList
-      let resultType ← inferType e'
-      return .node argList s!"{← ppExpr resultType}" s!"{rulename}"
+      | .mvar _ =>
+        return .leaf s!"{← ppExpr (← inferType e)}" true
+      | _ =>
+        let mut argList : List NDTree := []
+        let (rulename, needshead) ← ruleNameOfApp fn
+        for arg in args do
+          if (← inferType (← inferType arg)).isProp then
+            argList := argList ++ [← arg.toNDTreeM]
+        if needshead then argList := (← fn.toNDTreeM)::argList
+        let resultType ← inferType e'
+        return .node argList s!"{← ppExpr resultType}" s!"{rulename}"
 
   -- →I se il binder è una Prop (scarica un'assunzione)
   -- ∀I se il binder è un Type (introduce una variabile)
