@@ -134,22 +134,48 @@ partial def aggressiveInstantiateMVars (e: Expr) : MetaM Expr := do
     | (.mvar mid, args) =>
        match (← getMCtx).dAssignment.find? mid with
        | some i =>
-          if i.fvars.size == args.size && (← i.mvarIdPending.isAssignedOrDelayedAssigned) then
+          if i.fvars.size == args.size /-&& (← i.mvarIdPending.isAssignedOrDelayedAssigned)-/ then
            dbg_trace s!"VARS: {← exprInfo args[0]!} / {← exprInfo i.fvars[0]!}"
-           aggressiveInstantiateMVars (.mvar i.mvarIdPending)
+           let fvarid := i.fvars[0]!.fvarId!
+           let lctx := LocalContext.mkLetDecl (← getLCtx) fvarid (← i.mvarIdPending.withContext fvarid.getUserName) (← i.mvarIdPending.withContext fvarid.getType) args[0]!
+           withLCtx' lctx do
+            let res ← aggressiveInstantiateMVars (.mvar i.mvarIdPending)
+            dbg_trace s!"FINALE: {← exprInfo (← inferType res)}"
+            return res
           else
            return e
        | none => return e
-    | _ => e.traverseChildren aggressiveInstantiateMVars
- | _ => e.traverseChildren aggressiveInstantiateMVars
+    | _ => return e
+ | _ => return e
 
+partial def withAggressiveInstantiateMVars (e: Expr) (k: Expr → MetaM α) : MetaM α := do
+ let e ← instantiateMVars e
+ match e with
+ | .app _ _ => do
+    match e.withApp fun e a => (e, a) with
+    | (.mvar mid, args) =>
+       match (← getMCtx).dAssignment.find? mid with
+       | some i =>
+          if i.fvars.size == args.size /-&& (← i.mvarIdPending.isAssignedOrDelayedAssigned)-/ then
+           dbg_trace s!"VARS: {← exprInfo args[0]!} / {← exprInfo i.fvars[0]!}"
+           let fvarid := i.fvars[0]!.fvarId!
+           let lctx := LocalContext.mkLetDecl (← getLCtx) fvarid (← i.mvarIdPending.withContext fvarid.getUserName) (← i.mvarIdPending.withContext fvarid.getType) args[0]!
+           withLCtx' lctx do
+            let res ← aggressiveInstantiateMVars (.mvar i.mvarIdPending)
+            dbg_trace s!"FINALE: {← exprInfo (← inferType res)}"
+            k res
+          else
+           k e
+       | none => k e
+    | _ => k e
+ | _ => k e
 
 -- Versione monadica che usa exprInfo
 partial def Lean.Expr.toNDTreeM (e' : Expr) : MetaM NDTree := do
   /- for debugging
   -- dbg_trace s!"Processing: {← exprInfo e'}"
   -- dbg_trace s!"typed as {← ppExpr (← inferType e')}" -/
-  let e ← aggressiveInstantiateMVars e'
+  withAggressiveInstantiateMVars e' fun e => do
   /- for debugging
   dbg_trace s!"Becomes: {← exprInfo e}"
   dbg_trace s!"typed as {← ppExpr (← inferType e')}"
