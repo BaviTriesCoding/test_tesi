@@ -137,9 +137,11 @@ partial def withAggressiveInstantiateMVars (e: Expr) (k: Expr → MetaM α) : Me
     | (.mvar mid, args) =>
        match (← getMCtx).dAssignment.find? mid with
        | some i =>
-          if i.fvars.size == args.size /-&& (← i.mvarIdPending.isAssignedOrDelayedAssigned)-/ then
-           let fvarid := i.fvars[0]!.fvarId!
-           let lctx := LocalContext.mkLetDecl (← getLCtx) fvarid (← i.mvarIdPending.withContext fvarid.getUserName) (← i.mvarIdPending.withContext fvarid.getType) args[0]!
+          if i.fvars.size == args.size then
+           let mut lctx := ← getLCtx
+           for fv in i.fvars, arg in args do
+            let fvid := fv.fvarId!
+            lctx := LocalContext.mkLetDecl lctx fvid (← i.mvarIdPending.withContext fvid.getUserName) (← i.mvarIdPending.withContext fvid.getType) arg
            withLCtx' lctx do
             withAggressiveInstantiateMVars (.mvar i.mvarIdPending) k
           else
