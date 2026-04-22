@@ -62,7 +62,7 @@ partial def exprInfo (e : Expr) : MetaM String := do
       | some decl =>
          return s!".fvar {decl.userName}"
       | none =>
-         return s!".far UNBOUND"
+         return s!".fvar {repr e.fvarId!} UNBOUND"
   | .mvar id          => return s!".mvar {id.name}"
   | .sort lvl         => return s!".sort {lvl}"
   | .const name us    => return s!".const {name} {us}"
@@ -129,55 +129,59 @@ def ruleNameOfApp (e : Expr) : MetaM (String × Bool) := do
 
     | _ => return (s!"{← ppExpr e}", true)
 
-partial def aggressiveInstantiateMVars (e: Expr) : MetaM Expr := do
-  let e ← instantiateMVars e
-  match e with
-  | .app _ _ => do
+partial def withAggressiveInstantiateMVars (e: Expr) (k: Expr → MetaM α) : MetaM α := do
+ let e ← instantiateMVars e
+ match e with
+ | .app _ _ => do
     match e.withApp fun e a => (e, a) with
     | (.mvar mid, args) =>
-        match (← getMCtx).dAssignment.find? mid with
-        | some i =>
-          if i.fvars.size == args.size then
-            aggressiveInstantiateMVars (.mvar i.mvarIdPending)
+       match (← getMCtx).dAssignment.find? mid with
+       | some i =>
+          if i.fvars.size == args.size /-&& (← i.mvarIdPending.isAssignedOrDelayedAssigned)-/ then
+           let fvarid := i.fvars[0]!.fvarId!
+           let lctx := LocalContext.mkLetDecl (← getLCtx) fvarid (← i.mvarIdPending.withContext fvarid.getUserName) (← i.mvarIdPending.withContext fvarid.getType) args[0]!
+           withLCtx' lctx do
+            withAggressiveInstantiateMVars (.mvar i.mvarIdPending) k
           else
-            return e
-        | none => return e
-    | _ => e.traverseChildren aggressiveInstantiateMVars
-  | _ => e.traverseChildren aggressiveInstantiateMVars
-
+           k e
+       | none => k e
+    | _ => k e
+ | _ => k e
 
 -- Versione monadica che usa exprInfo
-partial def Lean.Expr.toNDTreeM (e' : Expr) : MetaM NDTree := do
-  /- for debugging -/
+partial def Lean.Expr.toNDTreeM (e : Expr) : MetaM NDTree := do
+  /- for debugging
   -- dbg_trace s!"Processing: {← exprInfo e'}"
-  -- dbg_trace s!"typed as {← ppExpr (← inferType e')}"
-  let e ← aggressiveInstantiateMVars e'
-  /- for debugging-/
-  -- dbg_trace s!"Becomes: {← exprInfo e}"
-  -- dbg_trace s!"typed as {← ppExpr (← inferType e')}"
-  -- dbg_trace s!"Env: {← ppExpr (Expr.bvar 0)} {← ppExpr (Expr.bvar 1)} {← ppExpr (Expr.bvar 2)}"
-  -- dbg_trace s!"-----------------------------------"
+  -- dbg_trace s!"typed as {← ppExpr (← inferType e')}" -/
+  withAggressiveInstantiateMVars e fun e => do
+  /- for debugging
+  dbg_trace s!"Becomes: {← exprInfo e}"
+  dbg_trace s!"typed as {← ppExpr (← inferType e')}"
+  dbg_trace s!"Env: {← ppExpr (Expr.bvar 0)} {← ppExpr (Expr.bvar 1)} {← ppExpr (Expr.bvar 2)}"
+  dbg_trace s!"-----------------------------------"-/
   match e with
   | .app _ _ => do
       let (fn, args) := e.withApp fun e a => (e, a)
-
-      if fn == const ``sorryAx [] then -- caso in cui la prova non sia completa
+      match fn with
+      | .const ``sorryAx [] =>
         let resultType ← inferType e
         return .node [] s!"{← ppExpr resultType}" "sorry"
-
-      let mut argList : List NDTree := []
-      let (rulename, needshead) ← ruleNameOfApp fn
-      for arg in args do
-        if (← inferType (← inferType arg)).isProp then
-          argList := argList ++ [← arg.toNDTreeM]
-      if needshead then argList := (← fn.toNDTreeM)::argList
-      let resultType ← inferType e'
-      return .node argList s!"{← ppExpr resultType}" s!"{rulename}"
+      | .mvar _ =>
+        return .leaf s!"{← ppExpr (← inferType e)}" true
+      | _ =>
+        let mut argList : List NDTree := []
+        let (rulename, needshead) ← ruleNameOfApp fn
+        for arg in args do
+          if (← inferType (← inferType arg)).isProp then
+            argList := argList ++ [← arg.toNDTreeM]
+        if needshead then argList := (← fn.toNDTreeM)::argList
+        let resultType ← inferType e
+        return .node argList s!"{← ppExpr resultType}" s!"{rulename}"
 
   -- →I se il binder è una Prop (scarica un'assunzione)
   -- ∀I se il binder è un Type (introduce una variabile)
   | .lam n t b bi =>
-      let lamType ← ppExpr (← inferType e')  -- CSC: devi farlo PRIMA di withLocalDecl per non catturare la var
+      let lamType ← ppExpr (← inferType e)  -- CSC: devi farlo PRIMA di withLocalDecl per non catturare la var
       let tKind ← inferType t
       let ruleName := if tKind.isProp then "→I" else "∀I"
       withLocalDecl n bi t fun fv => do
@@ -210,6 +214,16 @@ partial def Lean.Expr.toNDTreeM (e' : Expr) : MetaM NDTree := do
 -- RPC METHOD: GET TREE AS JSON
 -- ══════════════════════════════════════════════════════════════════
 
+def reprLCtx (G: LocalContext) : Format :=
+ G.decls.foldl
+  (fun s i =>
+    match i with
+    | none => s
+    | some d =>
+       /-s!"{s} {repr d.userName}({repr d.fvarId})"-/
+       s!"{s} {repr d.userName}")
+  .nil
+
 open RequestM in
 @[server_rpc_method]
 def getTreeAsJson (params : DeductionAtCursorParams) :
@@ -234,15 +248,16 @@ def getTreeAsJson (params : DeductionAtCursorParams) :
      let mmmid :=
       metavarctx.eAssignment.foldl (fun m d _ => if younger m.name d.name then m else d) (MVarId.mk (.num (.anonymous) 0))
      let proofTerm := Expr.mvar mmmid
-     /- for debugging
-     metavarctx.decls.forM (fun id i => id.withContext do dbg_trace s!"{id.name} : {← exprInfo i.type}")
-     metavarctx.eAssignment.forM (fun id e => id.withContext do dbg_trace s!"{id.name} e↦ {← exprInfo e}")
-     metavarctx.dAssignment.forM (fun id i => id.withContext do dbg_trace s!"{id.name} d↦ {i.fvars} ⊢ {i.mvarIdPending.name}")
-     -/
+     /- for debugging -/
+     metavarctx.decls.forM (fun id i => id.withContext do dbg_trace s!"{reprLCtx (← getLCtx)} ⊢ {id.name} : {← exprInfo i.type}")
+     metavarctx.eAssignment.forM (fun id e => id.withContext do dbg_trace s!"{reprLCtx (← getLCtx)} ⊢ {id.name} e↦ {← exprInfo e}")
+     metavarctx.dAssignment.forM (fun id i => id.withContext do dbg_trace s!"{reprLCtx (← getLCtx)} ⊢ {id.name} d↦ {i.fvars} ⊢ {i.mvarIdPending.name}")
+     /- -/
      -- dbg_trace s!"La mvar si chiama {mmmid.name}"
      mmmid.withContext do
       let tree ← proofTerm.toNDTreeM
-      -- dbg_trace s!"Found proof term for {name}:= {← exprInfo proofTerm} : {← ppExpr (← inferType proofTerm)} == {tyStr}"
+      -- dbg_trace s!"Found proof term for {name}: {← exprInfo proofTerm}"
+      dbg_trace s!"Found proof term for {name}:= {← exprInfo proofTerm} : {← ppExpr (← inferType proofTerm)} == {tyStr}"
       return { thmName := toString name, thmType := toString tyStr, treeJson := s!"{tree.toJson}" }
 
 -- ══════════════════════════════════════════════════════════════════
