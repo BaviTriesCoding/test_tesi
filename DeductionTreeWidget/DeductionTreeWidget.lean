@@ -126,28 +126,6 @@ def ruleNameOfApp (e : Expr) : MetaM (String × Bool) := do
       else return ("∀E", true)                     -- ∀ x, P x applicata a x
     | _ => return (s!"{← ppExpr e}", true)
 
-partial def aggressiveInstantiateMVars (e: Expr) : MetaM Expr := do
- let e ← instantiateMVars e
- match e with
- | .app _ _ => do
-    match e.withApp fun e a => (e, a) with
-    | (.mvar mid, args) =>
-       match (← getMCtx).dAssignment.find? mid with
-       | some i =>
-          if i.fvars.size == args.size /-&& (← i.mvarIdPending.isAssignedOrDelayedAssigned)-/ then
-           dbg_trace s!"VARS: {← exprInfo args[0]!} / {← exprInfo i.fvars[0]!}"
-           let fvarid := i.fvars[0]!.fvarId!
-           let lctx := LocalContext.mkLetDecl (← getLCtx) fvarid (← i.mvarIdPending.withContext fvarid.getUserName) (← i.mvarIdPending.withContext fvarid.getType) args[0]!
-           withLCtx' lctx do
-            let res ← aggressiveInstantiateMVars (.mvar i.mvarIdPending)
-            dbg_trace s!"FINALE: {← exprInfo (← inferType res)}"
-            return res
-          else
-           return e
-       | none => return e
-    | _ => return e
- | _ => return e
-
 partial def withAggressiveInstantiateMVars (e: Expr) (k: Expr → MetaM α) : MetaM α := do
  let e ← instantiateMVars e
  match e with
@@ -157,13 +135,10 @@ partial def withAggressiveInstantiateMVars (e: Expr) (k: Expr → MetaM α) : Me
        match (← getMCtx).dAssignment.find? mid with
        | some i =>
           if i.fvars.size == args.size /-&& (← i.mvarIdPending.isAssignedOrDelayedAssigned)-/ then
-           dbg_trace s!"VARS: {← exprInfo args[0]!} / {← exprInfo i.fvars[0]!}"
            let fvarid := i.fvars[0]!.fvarId!
            let lctx := LocalContext.mkLetDecl (← getLCtx) fvarid (← i.mvarIdPending.withContext fvarid.getUserName) (← i.mvarIdPending.withContext fvarid.getType) args[0]!
            withLCtx' lctx do
-            let res ← aggressiveInstantiateMVars (.mvar i.mvarIdPending)
-            dbg_trace s!"FINALE: {← exprInfo (← inferType res)}"
-            k res
+            withAggressiveInstantiateMVars (.mvar i.mvarIdPending) k
           else
            k e
        | none => k e
@@ -171,11 +146,11 @@ partial def withAggressiveInstantiateMVars (e: Expr) (k: Expr → MetaM α) : Me
  | _ => k e
 
 -- Versione monadica che usa exprInfo
-partial def Lean.Expr.toNDTreeM (e' : Expr) : MetaM NDTree := do
+partial def Lean.Expr.toNDTreeM (e : Expr) : MetaM NDTree := do
   /- for debugging
   -- dbg_trace s!"Processing: {← exprInfo e'}"
   -- dbg_trace s!"typed as {← ppExpr (← inferType e')}" -/
-  withAggressiveInstantiateMVars e' fun e => do
+  withAggressiveInstantiateMVars e fun e => do
   /- for debugging
   dbg_trace s!"Becomes: {← exprInfo e}"
   dbg_trace s!"typed as {← ppExpr (← inferType e')}"
@@ -197,13 +172,13 @@ partial def Lean.Expr.toNDTreeM (e' : Expr) : MetaM NDTree := do
           if (← inferType (← inferType arg)).isProp then
             argList := argList ++ [← arg.toNDTreeM]
         if needshead then argList := (← fn.toNDTreeM)::argList
-        let resultType ← inferType e'
+        let resultType ← inferType e
         return .node argList s!"{← ppExpr resultType}" s!"{rulename}"
 
   -- →I se il binder è una Prop (scarica un'assunzione)
   -- ∀I se il binder è un Type (introduce una variabile)
   | .lam n t b bi =>
-      let lamType ← ppExpr (← inferType e')  -- CSC: devi farlo PRIMA di withLocalDecl per non catturare la var
+      let lamType ← ppExpr (← inferType e)  -- CSC: devi farlo PRIMA di withLocalDecl per non catturare la var
       let tKind ← inferType t
       let ruleName := if tKind.isProp then "→I" else "∀I"
       withLocalDecl n bi t fun fv => do
