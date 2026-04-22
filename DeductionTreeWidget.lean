@@ -12,7 +12,7 @@ abbrev Proof := String -- Nei nodi unhandled è la prova non riconosciuta
 
 inductive NDTree where
   | leaf      : Formula → isOpen → NDTree
-  | node      : List NDTree → Formula → ProofMethod → NDTree -- La stringa è per il nome del teorema o della regola usata
+  | node      : List NDTree → Formula → ProofMethod → NDTree
   | unhandled : Proof → Formula → NDTree                        -- Per rappresentare i nodi che non siamo ancora in grado di gestire
   deriving FromJson, ToJson, Server.RpcEncodable
 
@@ -113,10 +113,11 @@ def ruleNameOf (fn : Name) : String :=
   | ``Exists.elim  => "∃E"
   | other          => other.toString
 
+
 -- Per le app: se fn è una costante nota, usa il mapping.
 -- Altrimenti, controlla il tipo di fn per capire se è →E o ∀E.
 def ruleNameOfApp (e : Expr) : MetaM (String × Bool) := do
-  match ← instantiateMVars e with
+  match e with
   | .const name _ => return (ruleNameOf name, false)
   | _ =>
     let fnType ← inferType e
@@ -229,15 +230,13 @@ def getTreeAsJson (params : DeductionAtCursorParams) :
      let mmmid :=
       metavarctx.eAssignment.foldl (fun m d _ => if younger m.name d.name then m else d) (MVarId.mk (.num (.anonymous) 0))
      let proofTerm := Expr.mvar mmmid
-     /- for debugging
+     /- for debugging -/
      metavarctx.decls.forM (fun id i => id.withContext do dbg_trace s!"{id.name} : {← exprInfo i.type}")
      metavarctx.eAssignment.forM (fun id e => id.withContext do dbg_trace s!"{id.name} e↦ {← exprInfo e}")
      metavarctx.dAssignment.forM (fun id i => id.withContext do dbg_trace s!"{id.name} d↦ {i.fvars} ⊢ {i.mvarIdPending.name}")
-     -/
      -- dbg_trace s!"La mvar si chiama {mmmid.name}"
      mmmid.withContext do
       let tree ← proofTerm.toNDTreeM
-      -- dbg_trace s!"Found proof term for {name}: {← exprInfo proofTerm}"
       dbg_trace s!"Found proof term for {name}:= {← exprInfo proofTerm} : {← ppExpr (← inferType proofTerm)} == {tyStr}"
       return { thmName := toString name, thmType := toString tyStr, treeJson := s!"{tree.toJson}" }
 
@@ -249,9 +248,10 @@ def getTreeAsJson (params : DeductionAtCursorParams) :
 def NDTreeJsonViewerWidget : Widget.Module where
   javascript := include_str "NDTreeJsonViewer.js"
 
--- =================
+-- ══════════════════════════════════════════════════════════════════
 -- LOGICA
--- =================
+-- ══════════════════════════════════════════════════════════════════
+
 
 macro "and_e" h:term:max ppSpace colGt l1:ident ppSpace colGt l2:ident : tactic =>
  `(tactic|refine And.casesOn $h (fun $l1 $l2 => ?_))
@@ -262,8 +262,6 @@ macro "or_e" h:term:max ppSpace colGt l1:ident ppSpace colGt l2:ident : tactic =
 -- ATTIVA I WIDGET
 -- ══════════════════════════════════════════════════════════════════
 show_panel_widgets [NDTreeJsonViewerWidget]
-
-set_option pp.proofs true
 
 theorem foo2 (A : Prop) (h : A) : A := by
   exact h
@@ -279,6 +277,7 @@ theorem Andleft' (P Q : Prop) (h : P ∧ Q) : P := by
 
 theorem Andleft'' (P Q : Prop) (h : P ∧ Q) : P := by
  apply And.left h
+
 
 theorem Andleft (P Q : Prop) (h : P ∧ Q) : P := by
  and_e h p _q
@@ -317,11 +316,14 @@ theorem NotIntro (P : Prop) (h : P → False) : ¬P := by
   apply Not.intro h
 
 theorem NotElim (P : Prop) (h1 : ¬P) (h2 : P) : False := by
-  apply h1 h2
+  apply absurd h2 h1 -- Baviera: in questa versione viene riconosciuta la regola di eliminazione del not, ma è un po' più criptica
 
-theorem NotElim' (P : Prop) (h1 : ¬P) : P → False := by
+theorem NotElim' (P : Prop) (h1 : ¬P) (h2 : P) : False := by
+  apply h1 h2 -- Baviera: in questa versione non viene riconosciuta la regola di eliminazione del not
+
+theorem NotElim'' (P : Prop) (h1 : ¬P) : P → False := by
   intro h2
-  apply h1 h2
+  apply absurd h2 h1
 
 theorem foo (A B C D : Prop) (h1: (A ∧ B) ∧ (C ∧ D)) : A ∧ C := by
   have h2 : A ∧ B := And.left h1

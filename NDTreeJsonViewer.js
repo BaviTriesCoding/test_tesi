@@ -13,8 +13,7 @@ function NDTreeNode({ node, depth = 0 }) {
   const isClosed = node.isOpen === false;
 
   const formulaText = node.formula ?? "?";
-  const displayText =
-    isLeaf && isClosed ? `[${formulaText}]` : formulaText;
+  const displayText = isLeaf && isClosed ? `[${formulaText}]` : formulaText;
 
   const formulaStyle = {
     color: "#d4d4d4",
@@ -68,32 +67,37 @@ function NDTreeNode({ node, depth = 0 }) {
       ),
     ),
 
-    // ── Horizontal bar + rule name
+    // ── Horizontal bar + rule name (absolutely positioned so it doesn't
+    //    affect the bar width and the formula stays centered)
     React.createElement(
       "div",
       {
         style: {
-          display: "flex",
-          alignItems: "center",
+          position: "relative",   // anchor for the absolute rule label
           margin: "5px 0 3px 0",
         },
       },
+      // The bar itself spans 100 % of the container width
       React.createElement("div", {
         style: {
-          flex: 1,
           borderTop: "1.5px solid #858585",
+          width: "100%",
           minWidth: "30px",
         },
       }),
+      // Rule label floats outside to the right, vertically centred on the bar
       node.rule
         ? React.createElement(
             "span",
             {
               style: {
+                position: "absolute",
+                left: "calc(100% + 10px)",   // 10 px gap from bar end
+                top: "50%",
+                transform: "translateY(-50%)",
                 color: "#9cdcfe",
                 fontSize: "11px",
                 fontStyle: "italic",
-                marginLeft: "7px",
                 whiteSpace: "nowrap",
                 userSelect: "none",
               },
@@ -215,7 +219,11 @@ export default function NDTreeViewer(props) {
         result.name,
       ),
       React.createElement("span", { style: { color: "#858585" } }, " : "),
-      React.createElement("span", { style: { color: "#ce9178" } }, result.type),
+      React.createElement(
+        "span",
+        { style: { color: "#ce9178" } },
+        result.type,
+      ),
     ),
 
     // ── Subtitle
