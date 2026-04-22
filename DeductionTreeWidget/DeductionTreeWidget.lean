@@ -135,6 +135,7 @@ partial def aggressiveInstantiateMVars (e: Expr) : MetaM Expr := do
        match (← getMCtx).dAssignment.find? mid with
        | some i =>
           if i.fvars.size == args.size then
+           dbg_trace s!"VARS: {← exprInfo args[0]!} / {← exprInfo i.fvars[0]!}"
            aggressiveInstantiateMVars (.mvar i.mvarIdPending)
           else
            return e
@@ -205,6 +206,16 @@ partial def Lean.Expr.toNDTreeM (e' : Expr) : MetaM NDTree := do
 -- RPC METHOD: GET TREE AS JSON
 -- ══════════════════════════════════════════════════════════════════
 
+def reprLCtx (G: LocalContext) : Format :=
+ G.decls.foldl
+  (fun s i =>
+    match i with
+    | none => s
+    | some d =>
+       /-s!"{s} {repr d.userName}({repr d.fvarId})"-/
+       s!"{s} {repr d.userName}")
+  .nil
+
 open RequestM in
 @[server_rpc_method]
 def getTreeAsJson (params : DeductionAtCursorParams) :
@@ -229,16 +240,16 @@ def getTreeAsJson (params : DeductionAtCursorParams) :
      let mmmid :=
       metavarctx.eAssignment.foldl (fun m d _ => if younger m.name d.name then m else d) (MVarId.mk (.num (.anonymous) 0))
      let proofTerm := Expr.mvar mmmid
-     /- for debugging
-     metavarctx.decls.forM (fun id i => id.withContext do dbg_trace s!"{id.name} : {← exprInfo i.type}")
-     metavarctx.eAssignment.forM (fun id e => id.withContext do dbg_trace s!"{id.name} e↦ {← exprInfo e}")
-     metavarctx.dAssignment.forM (fun id i => id.withContext do dbg_trace s!"{id.name} d↦ {i.fvars} ⊢ {i.mvarIdPending.name}")
-     -/
+     /- for debugging -/
+     metavarctx.decls.forM (fun id i => id.withContext do dbg_trace s!"{reprLCtx (← getLCtx)} ⊢ {id.name} : {← exprInfo i.type}")
+     metavarctx.eAssignment.forM (fun id e => id.withContext do dbg_trace s!"{reprLCtx (← getLCtx)} ⊢ {id.name} e↦ {← exprInfo e}")
+     metavarctx.dAssignment.forM (fun id i => id.withContext do dbg_trace s!"{reprLCtx (← getLCtx)} ⊢ {id.name} d↦ {i.fvars} ⊢ {i.mvarIdPending.name}")
+     /- -/
      -- dbg_trace s!"La mvar si chiama {mmmid.name}"
      mmmid.withContext do
       let tree ← proofTerm.toNDTreeM
       -- dbg_trace s!"Found proof term for {name}: {← exprInfo proofTerm}"
-      -- dbg_trace s!"Found proof term for {name}:= {← exprInfo proofTerm} : {← ppExpr (← inferType proofTerm)} == {tyStr}"
+      dbg_trace s!"Found proof term for {name}:= {← exprInfo proofTerm} : {← ppExpr (← inferType proofTerm)} == {tyStr}"
       return { thmName := toString name, thmType := toString tyStr, treeJson := s!"{tree.toJson}" }
 
 -- ══════════════════════════════════════════════════════════════════
