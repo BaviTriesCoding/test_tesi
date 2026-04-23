@@ -28,6 +28,11 @@ theorem ImplIntroElim {P Q R : Prop} (h: P -> Q) (p: R -> P) : R -> Q := by
  apply p
  exact r
 
+-- CSC XXX Bug applicazione multipla
+theorem impmul{P Q R  : Prop} (h: P → Q → R) : P → Q → R := by
+ intro p q
+ apply h p q
+
 theorem Andleft' (P Q : Prop) (h : P ∧ Q) : P := by
  exact And.casesOn h (fun p q => p)
 

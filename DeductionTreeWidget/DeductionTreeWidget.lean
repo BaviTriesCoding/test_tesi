@@ -11,7 +11,9 @@ abbrev isOpen := Bool --Il booleano è per capire se è una foglia aperta o scar
 abbrev Proof := String -- Nei nodi unhandled è la prova non riconosciuta
 
 inductive NDTree where
-  | leaf      : Formula → isOpen → NDTree
+ -- | open       : List NDTree → Formula → NDTree  -- lista di "ipotesi" alcune delle quali dimostrate e quindi sono alberelli (= le decls) + conclusione
+ -- | leafthm : Name -> Formula? → NDTree  -- uso di un teorema (ovvero una .const e non una .fvar), una foglia che è un teorema di cui visualizzare solo il nome (e magari un tooltip con il tipo)
+  | leaf      : Formula → isOpen → NDTree -- queste sono le .fvar
   | node      : List NDTree → Formula → ProofMethod → NDTree -- La stringa è per il nome del teorema o della regola usata
   | unhandled : Proof → Formula → NDTree                        -- Per rappresentare i nodi che non siamo ancora in grado di gestire
   deriving FromJson, ToJson, Server.RpcEncodable
@@ -169,7 +171,7 @@ partial def Lean.Expr.toNDTreeM (e : Expr) : MetaM NDTree := do
         let resultType ← inferType e
         return .node [] s!"{← ppExpr resultType}" "sorry"
       | .mvar _ =>
-        return .leaf s!"{← ppExpr (← inferType e)}" true
+        return .leaf s!"{← ppExpr (← inferType e)}" true -- anche qui è open
       | _ =>
         let mut argList : List NDTree := []
         let (rulename, needshead) ← ruleNameOfApp fn
@@ -206,7 +208,7 @@ partial def Lean.Expr.toNDTreeM (e : Expr) : MetaM NDTree := do
   | .fvar id => do
       let decl ← Meta.getFVarLocalDecl (.fvar id)
       return .leaf (toString (← ppExpr decl.type)) false
-  | .mvar _ => return .leaf s!"{← ppExpr (← inferType e)}" true
+  | .mvar _ => return .leaf s!"{← ppExpr (← inferType e)}" true -- qui è open
   | e => return .unhandled s!"{← ppExpr e}" s!"{← ppExpr (← inferType e)}"
   where
     isHygienicName (n : Name) : Bool :=

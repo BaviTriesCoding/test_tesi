@@ -386,8 +386,6 @@ theorem transitivity_inclusion: ∀A B C, A ⊆ B → B ⊆ C → A ⊆ C := by
  -- che quello che vogliamo dimostrare, quindi abbiamo finito
  thus by H₂ done
 
-
-
 -- Esercizio 3: due insiemi ognuno sottoinsieme dell'altro sono uguali
 theorem subset_to_eq: ∀A B, A ⊆ B → B ⊆ A → A = B := by
  --fissiamo A e B
