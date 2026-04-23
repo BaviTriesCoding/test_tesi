@@ -19,7 +19,7 @@ syntax "assume " ident " : " term (matitaEquivalent)? : tactic
 macro_rules
   | `(tactic| assume $ident : $type) => `(tactic| intro $ident:ident <;> guard_hyp _last_hypothesis_ :ₛ $type)
   | `(tactic| assume $ident : $type that is equivalent to $type₂) =>
-    `(tactic| assume $ident : $type <;> change $type₂ at _last_hypothesis_)
+    `(tactic| assume $ident : $type <;> have $ident := @id $type₂ $ident)
 
 
 syntax "suppose " term (matitaEquivalent)? (" as " ident)? : tactic
@@ -27,8 +27,10 @@ syntax "suppose " term (matitaEquivalent)? (" as " ident)? : tactic
 macro_rules
   | `(tactic| suppose $term as $ident) => `(tactic| intro $ident:ident <;> guard_hyp _last_hypothesis_ :ₛ $term)
   | `(tactic| suppose $term) => `(tactic| intro <;> guard_hyp _last_hypothesis_ :ₛ $term)
-  | `(tactic| suppose $term that is equivalent to $type $[as $ident]? ) =>
-    `(tactic| suppose $term $[as $ident]? <;> change $type at _last_hypothesis_)
+  | `(tactic| suppose $term that is equivalent to $type ) =>
+    `(tactic| suppose $term <;> let _ := @id $type _last_hypothesis_)
+  | `(tactic| suppose $term that is equivalent to $type as $ident ) =>
+    `(tactic| suppose $term as $ident <;> let $ident := @id $type $ident)
 
 
 theorem iff_e: ∀A B: Prop, (A ↔ B) → (A → B) ∧ (B → A) := by
@@ -945,6 +947,18 @@ theorem powerset_intersection₂: ∀A B, ℘ A ∩ ℘ B ⊆ ℘ (A ∩ B) := b
 
 -- non cancellare la seguente riga, utile per la correzione automatica
 #check powerset_intersection₂
+
+theorem foo₁ : ∀ A, A ⊆ A → True := by
+  intros A H
+  -- let h₂ : ∀ Z, Z ∈ A → Z ∈ A := H
+  let h₂ := @id (∀ Z, Z ∈ A → Z ∈ A) H
+  -- change ∀ Z, Z ∈ A -> Z ∈ A at H
+  constructor
+
+set_option pp.explicit true
+set_option pp.all true
+in
+#print foo₁
 
 show_panel_widgets [- NDTreeJsonViewerWidget]
 
