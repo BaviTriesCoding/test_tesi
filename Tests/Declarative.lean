@@ -33,6 +33,11 @@ macro_rules
     `(tactic| suppose $term as $ident <;> let $ident := @id $type $ident)
 
 
+-- one more bug here
+--macro_rules
+--  | `(matitaJust | by ) =>
+--    `(Lean.Parser.Tactic.SolveByElim.arg | [])
+
 theorem iff_e: ∀A B: Prop, (A ↔ B) → (A → B) ∧ (B → A) := by
  intros A B U ; cases U ; constructor <;> solve_by_elim
 
@@ -40,6 +45,8 @@ declare_syntax_cat matitaJust
 
 syntax "thus "? ("by " ident,+)? : matitaJust
 
+-- simplify the code now that after by the list must be non empty?
+-- factorize Or.inr/Or.inl
 def matitaJust_to_solveByElimArg : TSyntax `matitaJust -> MacroM (TSyntax ``Lean.Parser.Tactic.SolveByElim.args)
   | `(matitaJust | thus by $[$terms],* ) => do
     let args ← terms.mapM fun x => `(Lean.Parser.Tactic.SolveByElim.arg| $x:ident)
@@ -48,6 +55,8 @@ def matitaJust_to_solveByElimArg : TSyntax `matitaJust -> MacroM (TSyntax ``Lean
     `(Lean.Parser.Tactic.SolveByElim.args| [$[$terms:ident],*, Or.inr, Or.inl, matita.iff_e, And.left, And.right])
   | `(matitaJust | thus ) =>
     `(Lean.Parser.Tactic.SolveByElim.args| [_last_hypothesis_, Or.inr, Or.inl, matita.iff_e, And.left, And.right])
+--  | `(matitaJust | ) =>
+--    `(Lean.Parser.Tactic.SolveByElim.args| [])
   | _ => -- panic! "xxx" -- thereis  the right throwXXX
     `(Lean.Parser.Tactic.SolveByElim.args| [Or.inr, Or.inl, matita.iff_e, And.left, And.right])
 
@@ -63,6 +72,8 @@ syntax (matitaJust)? "we " " proved " term ("as " ident)? : tactic
 syntax (matitaJust)? "we " " proved " term "as " ident "and " term "as " ident : tactic
 syntax (matitaJust)? "let " ident ": " term "such " "that " term "as " ident : tactic
 
+-- duplicated code, not nice
+-- idea: factorize a bit using a _empty_matita_just ?  or just use obviously?
 macro_rules
   | `(tactic | $mj:matitaJust we proved $term as $ident) => do
     let x ← matitaJust_to_solveByElimArg mj
@@ -96,7 +107,7 @@ macro "we " "split " "the " "proof " : tactic => `(tactic| first | apply And.int
 macro "we " "claim " stmt:term "as " name:ident "by" colGt prf:tacticSeq : tactic => `(tactic|have $name : $stmt := by $prf)
 macro "we " "claim " stmt:term                  "by" colGt prf:tacticSeq : tactic => `(tactic|have _ : $stmt := by $prf)
 
-syntax "by " term "it " "suffices " "to " "prove " term : tactic
+syntax "by " term "it " "suffices " "to " "prove " term : tactic -- "it suffices to prove " is a keyword in Verbose
 
 macro_rules
  | `(tactic| by $term:term it suffices to prove $arg) => `(tactic| apply $term:term <;> we need to prove $arg:term)
@@ -109,6 +120,8 @@ macro_rules
    `(tactic| we choose $term₁ and prove $term₂ <;> change $term₃)
 
 macro "we " "proceed " "by " "cases " "on " name:ident "to " "prove " stmt:term : tactic => `(tactic|guard_target =ₛ $stmt <;> cases $name:term)
+
+macro "we " "proceed " "by " "cases " "on " "the " "guard " t:term : tactic => `(tactic|cases $t:term)
 
 macro "we " "proceed " "by " "induction " "on " name:ident ": " type:term "to " "prove " stmt:term : tactic => `(tactic|guard_target =ₛ ∀$name : $type, $stmt <;> intro $name:ident <;> induction $name:term)
 
