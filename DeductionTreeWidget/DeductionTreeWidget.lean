@@ -192,29 +192,27 @@ partial def Lean.Expr.toNDTreeM (e : Expr) : MetaM NDTree := do
           if needshead then argList := (← fn.toNDTreeM)::argList
           let resultType ← inferType e
           return .node argList s!"{← ppExpr resultType}" s!"{rulename}"
-
     -- →I se il binder è una Prop (scarica un'assunzione)
     -- ∀I se il binder è un Type (introduce una variabile)
     | .lam n t b bi =>
-        let lamType ← ppExpr (← inferType e)  -- CSC: devi farlo PRIMA di withLocalDecl per non catturare la var
+        let lamType ← ppExpr (← inferType e)
         let tKind ← inferType t
         let ruleName := if tKind.isProp then "→I" else "∀I"
         withLocalDecl n bi t fun fv => do
          let child ← (b.instantiate1 fv).toNDTreeM
          return .node [child] s!"{lamType}" ruleName
-
     /-  XXX TODO codice bacato
-      | .forallE n t b bi =>
-        let displayName := if isHygienicName n then "✝" else n.toString
-        let tStr ← ppExpr t
-        if e.isArrow then
-          return .node [← b.toNDTreeM] s!"{displayName} : {tStr}" "∀"
-        else
-          withLocalDecl n bi t fun fv => do
-            return .node [← (b.instantiate1 fv).toNDTreeM] s!"∀{displayName}: {tStr}" "∀"
-
-    | .letE _ _ _ body _ => body.toNDTreeM
-    | .proj _ _ e         => e.toNDTreeM -/
+    | .forallE n t b bi =>
+        -- CSC: questo caso non può accadere se stiamo processando
+        -- una prova p : T : Prop
+        -- in quanto ∀... : sort_n : Type_m ≠ Prop
+        -- Questo mostra però un problema: il widget dovrebbe provare a rendere
+        -- l'albero sse la costante all'interno della quale siamo è veramente
+        -- una prova, ovvero il tipo del tipo della costante è Prop
+        -- Implementare questo check in getTreeAsJson
+    | .proj _ _ e         => TODO -- CSC: questo può succedere
+    -/
+    | .letE _ _ v body _ => (body.instantiate1 v).toNDTreeM
     | .mdata _ e          => e.toNDTreeM
     | .fvar id => do
         let decl ← Meta.getFVarLocalDecl (.fvar id)
