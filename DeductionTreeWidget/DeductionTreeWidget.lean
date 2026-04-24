@@ -160,7 +160,28 @@ partial def withAggressiveInstantiateMVars (e: Expr) (k: Option Expr → MetaM �
     | _ => k (some e)
  | _ => k (some e)
 
--- Versione monadica che usa exprInfo
+-- Prints the names of the varsin the LocalContext
+def reprLCtx (G: LocalContext) (verbose := false) : MetaM Format :=
+ G.decls.foldlM
+  (fun s i => do
+    match s, verbose with
+    | .nil, true => return " " -- quick&dirty hack to skip the recursive constant name
+    | _, _ =>
+       match i with
+       | none => return s
+       | some d =>
+          -- s!"{s} {repr d.userName}({repr d.fvarId})"
+          if verbose then
+           let v : MetaM Format :=
+            match d.value? (allowNondep := true) with
+            | .none => return Format.nil
+            | .some v => return ":=" ++ (← ppExpr v)
+           let ty ← ppExpr d.type
+           return s!"{s} ({repr d.userName}:{ty}{← v})"
+          else
+           return s!"{s} {repr d.userName}")
+     .nil
+
 partial def Lean.Expr.toNDTreeM (e : Expr) : MetaM NDTree := do
   /- for debugging
   -- dbg_trace s!"Processing: {← exprInfo e'}"
@@ -181,8 +202,9 @@ partial def Lean.Expr.toNDTreeM (e : Expr) : MetaM NDTree := do
         | .const ``sorryAx [] =>
           let resultType ← inferType e
           return .node [] s!"{← ppExpr resultType}" "sorry"
-        | .mvar _ =>
-          return .leaf s!"{← ppExpr (← inferType e)}" true -- anche qui è open
+        | .mvar mid =>
+          -- CSC: bug, in next line the args are lost; they should go in the NDTree as →E/∀E
+          return .leaf s!"{← reprLCtx (verbose:=true) ((← getMCtx).getDecl mid).lctx}  ⊢ {← ppExpr (← inferType e)}" true  -- anche qui è open
         | _ =>
           let mut argList : List NDTree := []
           let (rulename, needshead) ← ruleNameOfApp fn
@@ -217,22 +239,13 @@ partial def Lean.Expr.toNDTreeM (e : Expr) : MetaM NDTree := do
     | .fvar id => do
         let decl ← Meta.getFVarLocalDecl (.fvar id)
         return .leaf (toString (← ppExpr decl.type)) false
-    | .mvar _ => return .leaf s!"{← ppExpr (← inferType e)}" true -- qui è open
+    | .mvar mid => return .leaf s!"{← reprLCtx (verbose:=true) ((← getMCtx).getDecl mid).lctx}  ⊢ {← ppExpr (← inferType e)}" true -- qui è open
     | e => return .unhandled s!"{← ppExpr e}" s!"{← ppExpr (← inferType e)}"
 
 -- ══════════════════════════════════════════════════════════════════
 -- RPC METHOD: GET TREE AS JSON
 -- ══════════════════════════════════════════════════════════════════
 
-def reprLCtx (G: LocalContext) : Format :=
- G.decls.foldl
-  (fun s i =>
-    match i with
-    | none => s
-    | some d =>
-       /-s!"{s} {repr d.userName}({repr d.fvarId})"-/
-       s!"{s} {repr d.userName}")
-  .nil
 
 open RequestM in
 @[server_rpc_method]
@@ -258,11 +271,11 @@ def getTreeAsJson (params : DeductionAtCursorParams) :
      let mmmid :=
       metavarctx.eAssignment.foldl (fun m d _ => if younger m.name d.name then m else d) (MVarId.mk (.num (.anonymous) 0))
      let proofTerm := Expr.mvar mmmid
-     /- for debugging -/
-    --  metavarctx.decls.forM (fun id i => id.withContext do dbg_trace s!"{reprLCtx (← getLCtx)} ⊢ {id.name} : {← exprInfo i.type}")
-    --  metavarctx.eAssignment.forM (fun id e => id.withContext do dbg_trace s!"{reprLCtx (← getLCtx)} ⊢ {id.name} e↦ {← exprInfo e}")
-    --  metavarctx.dAssignment.forM (fun id i => id.withContext do dbg_trace s!"{reprLCtx (← getLCtx)} ⊢ {id.name} d↦ {i.fvars} ⊢ {i.mvarIdPending.name}")
-     /- -/
+     /- for debugging
+     metavarctx.decls.forM (fun id i => id.withContext do dbg_trace s!"{← reprLCtx (← getLCtx)} ⊢ {id.name} : {← exprInfo i.type}")
+     metavarctx.eAssignment.forM (fun id e => id.withContext do dbg_trace s!"{← reprLCtx (← getLCtx)} ⊢ {id.name} e↦ {← exprInfo e}")
+     metavarctx.dAssignment.forM (fun id i => id.withContext do dbg_trace s!"{← reprLCtx (← getLCtx)} ⊢ {id.name} d↦ {i.fvars} ⊢ {i.mvarIdPending.name}")
+     -/
      -- dbg_trace s!"La mvar si chiama {mmmid.name}"
      mmmid.withContext do
       let tree ← proofTerm.toNDTreeM
