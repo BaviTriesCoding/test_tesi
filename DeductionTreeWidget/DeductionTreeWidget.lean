@@ -86,6 +86,7 @@ def ruleNameOfApp (e : Expr) : MetaM (String × Bool) := do
   | _ =>
     let fnType ← inferType e
     -- dbg_trace s!"ruleNameOfApp: fnType = {← exprInfo fnType}"
+    -- dbg_trace s!"ruleNameOfApp: fnType = {← exprInfo fnType}"
     match fnType with
     | .app (.const ``Not []) (.fvar _) => return ("¬E", true)  -- P → False applicata a P
     | .forallE _ _ _ _ =>
