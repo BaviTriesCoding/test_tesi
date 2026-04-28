@@ -19,14 +19,12 @@ show_panel_widgets [NDTreeJsonViewerWidget]
 
 set_option pp.proofs true
 
-theorem foo2 (A : Prop) (h : A) : A := by
+theorem foo2 (A : Prop) (h : A ∧ C) : A ∧ C := by
   exact h
 
-theorem ImplIntroElim {P Q R : Prop} (h: P -> Q) (p: R -> P) : R -> Q := by
+theorem ImplIntroElim {A P Q R : Prop} (h: P -> Q) (p: A → R → P) (a : A) : R -> Q := by
  intro r
- apply h
- apply p
- exact r
+ apply h (p a r)
 
 -- CSC XXX Bug applicazione multipla
 theorem impmul{P Q R  : Prop} (h: P → Q → R) : P → Q → R := by
@@ -72,8 +70,24 @@ theorem OrElim (P Q R : Prop) (h1 : P ∨ Q) (h2 : P → R) (h3 : Q → R) : R :
   . apply h2 p
   . apply h3 q
 
-theorem NotIntro (P : Prop) (h : P → False) : ¬P := by
-  apply Not.intro h
+theorem OrElim'  (h1: (A ∧ B) ∨ (C ∧ D)) (h2: A → C) : C := by
+  or_e h1 ab cd
+  . apply h2 (And.left ab)
+  . apply And.left cd
+
+theorem OrElim''  (h1: (A ∧ B) ∨ C) (h2: A → C) : C := by
+  or_e h1 ab c
+  . apply h2 (And.left ab)
+  . exact c
+-- Bavi: per capire quando ho un ramo aperto o un ramo chiuso, devo vedere se è una mvar (ramo aperto) o una fvar (ramo chiuso). Per le mvar bisogna mostrare le ipotesi, per le fvar no.
+
+theorem NotIntro (P : Prop) (h : ¬P) : ¬P := by
+  intro p
+  apply h p
+
+theorem NotIntro'' (P : Prop) (h : ¬P) : P → False := by
+  intro p
+  apply h p
 
 theorem NotElim (P : Prop) (h1 : ¬P) (h2 : P) : False := by
   apply h1 h2
@@ -81,9 +95,6 @@ theorem NotElim (P : Prop) (h1 : ¬P) (h2 : P) : False := by
 theorem NotElim' (P : Prop) (h1 : ¬P) (h2 : P) : False := by
   apply absurd h2 h1
 
-theorem NotElim'' (P : Prop) (h1 : ¬P) : P → False := by
-  intro h2
-  apply h1 h2
 
 theorem funzionera (P:Prop) (h1: ¬P → P) (h2: ¬P) : P := by
   apply h1 h2

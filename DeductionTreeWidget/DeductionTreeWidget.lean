@@ -1,35 +1,42 @@
+import DeductionTreeWidget.ExprInfo
 import Lean
-open Lean Meta Server Widget
-
+open Lean Meta Server Widget exprInfo
 -- ══════════════════════════════════════════════════════════════════
 -- Natural Deduction Tree Type
 -- ══════════════════════════════════════════════════════════════════
 
 abbrev Formula := String -- Quello che c'è scritto nelle foglie
 abbrev ProofMethod := String -- ¬i, ∧e1, ∧e2, ∧i, ∨i1, ∨i2, ∨e, →i, →e, etc.
-abbrev isOpen := Bool --Il booleano è per capire se è una foglia aperta o scaricata
+abbrev isDischarged := Bool --Il booleano è per capire se è una foglia aperta o scaricata
 abbrev Proof := String -- Nei nodi unhandled è la prova non riconosciuta
-
 inductive NDTree where
- -- | open       : List NDTree → Formula → NDTree  -- lista di "ipotesi" alcune delle quali dimostrate e quindi sono alberelli (= le decls) + conclusione
- -- | leafthm : Name -> Formula? → NDTree  -- uso di un teorema (ovvero una .const e non una .fvar), una foglia che è un teorema di cui visualizzare solo il nome (e magari un tooltip con il tipo)
-  | leaf      : Formula → isOpen → NDTree -- queste sono le .fvar
-  | node      : List NDTree → Formula → ProofMethod → NDTree -- La stringa è per il nome del teorema o della regola usata
+-- | open       : List NDTree → Formula → NDTree  -- lista di "ipotesi" alcune delle quali dimostrate e quindi sono alberelli (= le decls) + conclusione
+-- | leafthm : Name -> Formula? → NDTree  -- uso di un teorema (ovvero una .const e non una .fvar), una foglia che è un teorema di cui visualizzare solo il nome (e magari un tooltip con il tipo)
+  | leaf      : Formula → isDischarged → NDTree -- queste sono le .fvar
+  | node      : List NDTree → Formula → ProofMethod → List NDTree → NDTree -- La stringa è per il nome del teorema o della regola usata
   | unhandled : Proof → Formula → NDTree                        -- Per rappresentare i nodi che non siamo ancora in grado di gestire
   deriving FromJson, ToJson, Server.RpcEncodable
 
-def NDTree.toString : NDTree → String
-  | .leaf f isOpen => s!"{if isOpen then "Open" else "Closed"} leaf: {f}"
-  | .node children f rule => s!"Node: {f} (rule: {rule})\n" ++ "\n".intercalate (children.map (toString ·))
-  | .unhandled p f => s!"Unhandled node ({p}): {f}"
-
 def NDTree.toJson : NDTree → String
-  | .leaf f isOpen => "{\"formula\":\""++ f ++"\", \"isOpen\":\"" ++ s!"{if isOpen then "true" else "false"}" ++ "\"}"
-  | .node children f rule =>
-      let childrenJson := children.map toJson
-      "{\"formula\":\"" ++ f ++ "\", \"rule\": \"" ++ rule ++ "\", \"premises\": [" ++ String.intercalate ", " childrenJson ++ "]}"
-  | .unhandled p f => "{\"formula\":\"" ++ f ++ "\", \"unhandledProof\": \"" ++ p ++ "\"}"
+  | .leaf f isDischarged =>
+    "{
+      \"formula\":\""++ f ++"\",
+      \"isDischarged\":\"" ++ s!"{repr isDischarged}" ++ "\"
+    }"
+  | .node hypotesis f rule children =>
+      "{
+        \"formula\":\"" ++ f ++ "\",
+        \"rule\": \"" ++ rule ++ "\",
+        \"hypotesis\": [" ++ String.intercalate ", " (hypotesis.map toJson) ++ "],
+        \"children\": [" ++ String.intercalate ", " (children.map toJson) ++ "]
+      }"
+  | .unhandled p f =>
+    "{
+      \"formula\":\"" ++ f ++ "\",
+      \"unhandledProof\": \"" ++ p ++ "\"
+    }"
 
+def NDTree.toString (tree : NDTree) : String := tree.toJson
 
 -- ══════════════════════════════════════════════════════════════════
 -- RPC PARAMS & RESULT
@@ -49,50 +56,6 @@ structure TreeAsJsonResult where
   thmType : String
   treeJson : String
   deriving FromJson, ToJson, Server.RpcEncodable
-
--- ══════════════════════════════════════════════════════════════════
--- RPC METHOD
--- ══════════════════════════════════════════════════════════════════
-
--- CSC: invece di usare exprInfo si può usare repr che è più verbosa, ma si capisce uguale
--- For debugging: it prints the low level details of the term (e.g. bvar vs fvar)
-partial def exprInfo (e : Expr) : MetaM String := do
-  match /-← instantiateMVars-/ e with
-  | .bvar idx         => return s!".bvar {idx}"
-  | .fvar _ =>
-      match (← getLCtx).find? e.fvarId! with
-      | some decl =>
-         return s!".fvar {decl.userName}"
-      | none =>
-         return s!".fvar {repr e.fvarId!} UNBOUND"
-  | .mvar id          => return s!".mvar {id.name}"
-  | .sort lvl         => return s!".sort {lvl}"
-  | .const name us    => return s!".const {name} {us}"
-  | .app fn arg       =>
-      return s!".app ({← exprInfo fn}) ({← exprInfo arg})"
-  | .lam n t b _ =>
-    let tStr ← exprInfo t
-    let displayName := n.toString
-    let bStr ← exprInfo b
-    return s!".lam {displayName} : ({tStr}) => ({bStr})"
-  | .forallE n t b _ =>
-    if e.isArrow then  -- CSC XXX TODO bug, reimplementare, violiamo l'invariante richiesto
-      -- non dipendente: ignora il nome del binder
-      return s!"({← exprInfo t}) → ({← exprInfo b})"
-    else
-      let tStr ← exprInfo t
-      let bStr ← exprInfo b
-      return s!"∀ {n} : ({tStr}), ({bStr})"
-  | .letE n t v b _   =>
-      let tStr ← exprInfo t
-      let vStr ← exprInfo v
-      let bStr ← exprInfo b
-      return s!".let {n} : ({tStr}) := ({vStr}); {bStr}"
-  | .lit (.natVal n)  => return s!"Nat {n}"
-  | .lit (.strVal s)  => return s!"Str {s}"
-  | .mdata _ e        => exprInfo e
-  | .proj tn idx s    =>
-      return s!".proj {tn}.{idx} ({← exprInfo s})"
 
 
 -- ══════════════════════════════════════════════════════════════════
@@ -122,7 +85,7 @@ def ruleNameOfApp (e : Expr) : MetaM (String × Bool) := do
   | .const name _ => return (ruleNameOf name, false)
   | _ =>
     let fnType ← inferType e
-    dbg_trace s!"ruleNameOfApp: fnType = {← exprInfo fnType}"
+    -- dbg_trace s!"ruleNameOfApp: fnType = {← exprInfo fnType}"
     match fnType with
     | .app (.const ``Not []) (.fvar _) => return ("¬E", true)  -- P → False applicata a P
     | .forallE _ _ _ _ =>
@@ -131,66 +94,81 @@ def ruleNameOfApp (e : Expr) : MetaM (String × Bool) := do
 
     | _ => return (s!"{← ppExpr e}", true)
 
-partial def withAggressiveInstantiateMVars (e: Expr) (k: Expr → MetaM α) : MetaM α := do
- let e ← instantiateMVars e
- match e with
- | .app _ _ => do
-    match e.withApp fun e a => (e, a) with
-    | (.mvar mid, args) =>
-       match (← getMCtx).dAssignment.find? mid with
-       | some i =>
-          if i.fvars.size == args.size then
-           let mut lctx := ← getLCtx
-           for fv in i.fvars, arg in args do
-            let fvid := fv.fvarId!
-            lctx := LocalContext.mkLetDecl lctx fvid (← i.mvarIdPending.withContext fvid.getUserName) (← i.mvarIdPending.withContext fvid.getType) arg
-           withLCtx' lctx do
-            withAggressiveInstantiateMVars (.mvar i.mvarIdPending) k
-          else
-           k e
-       | none => k e
-    | _ => k e
- | _ => k e
+mutual
 
--- Versione monadica che usa exprInfo
-partial def Lean.Expr.toNDTreeM (e : Expr) : MetaM NDTree := do
-  /- for debugging
-  -- dbg_trace s!"Processing: {← exprInfo e'}"
-  -- dbg_trace s!"typed as {← ppExpr (← inferType e')}" -/
+partial def handleSorry (e : Expr) : MetaM NDTree := do
+  let resultType ← inferType e
+  return .leaf s!"{← ppExpr resultType}" true
+
+partial def handleOrElim (e : Expr) (hypotesis : List NDTree) : MetaM NDTree := do
+  let (_, args) := e.withApp fun e a => (e, a)
+  let children ← args.filterMapM fun arg => do
+    if (← inferType (← inferType arg)).isProp then
+      match arg with
+      | .lam n t b bi =>
+        if (← inferType t).isProp then
+          withLocalDecl n bi t fun fv => do
+            -- dbg_trace s!"aggiungo ipotesi: {← ppExpr (fv)} : {← ppExpr t}"
+            let child ← (b.instantiate1 fv).toNDTreeM ([← fv.toNDTreeM] ++ hypotesis)
+            return some child
+        else
+          return some (← arg.toNDTreeM )
+      | _ =>
+        return some (← arg.toNDTreeM)
+    else
+      return none
+  let resultType ← inferType e
+  return .node hypotesis s!"{← ppExpr resultType}" "∨E" children.toList
+-- appunto: per gestire i →e multipli, devo controllare se è una forallE con isArrow (quindi un'implicazione) e mettere come argomento solo il primo argomento. Da lì genero il prossimo expr come il body del forall.
+
+partial def Lean.Expr.toNDTreeM (e : Expr) (hypotesis : List NDTree := []) : MetaM NDTree := do
   withAggressiveInstantiateMVars e fun e => do
-  /- for debugging
-  dbg_trace s!"Becomes: {← exprInfo e}"
-  dbg_trace s!"typed as {← ppExpr (← inferType e')}"
-  dbg_trace s!"Env: {← ppExpr (Expr.bvar 0)} {← ppExpr (Expr.bvar 1)} {← ppExpr (Expr.bvar 2)}"
-  dbg_trace s!"-----------------------------------"-/
+  /- for debugging -/
+  dbg_trace s!"═════════════════════════════════════════════════════════════════════════"
+  dbg_trace s!"Processing: {← exprInfo e}"
+  dbg_trace s!"typed as {← ppExpr (← inferType e)}"
+  -- dbg_trace s!"Becomes: {← exprInfo e}"
+  -- dbg_trace s!"typed as {← ppExpr (← inferType e')}"
+  -- dbg_trace s!"Env: {← ppExpr (Expr.bvar 0)} {← ppExpr (Expr.bvar 1)} {← ppExpr (Expr.bvar 2)}"
   match e with
   | .app _ _ => do
       let (fn, args) := e.withApp fun e a => (e, a)
       match fn with
-      | .const ``sorryAx [] =>
-        let resultType ← inferType e
-        return .node [] s!"{← ppExpr resultType}" "sorry"
-      | .mvar _ =>
-        return .leaf s!"{← ppExpr (← inferType e)}" true -- anche qui è open
+      | .const `sorryAx [] => return ← handleSorry e
+      | .const `Or.casesOn [] => return ← handleOrElim e hypotesis
+      | .mvar _ => return .leaf s!"{← ppExpr (← inferType e)}" true -- anche qui è open
       | _ =>
         let mut argList : List NDTree := []
         let (rulename, needshead) ← ruleNameOfApp fn
         for arg in args do
           if (← inferType (← inferType arg)).isProp then
-            argList := argList ++ [← arg.toNDTreeM]
-        if needshead then argList := (← fn.toNDTreeM)::argList
+            argList := argList ++ [← arg.toNDTreeM hypotesis]
+        if needshead then argList := (← fn.toNDTreeM hypotesis)::argList
         let resultType ← inferType e
-        return .node argList s!"{← ppExpr resultType}" s!"{rulename}"
+        return .node hypotesis s!"{← ppExpr resultType}" s!"{rulename}" argList
 
   -- →I se il binder è una Prop (scarica un'assunzione)
   -- ∀I se il binder è un Type (introduce una variabile)
   | .lam n t b bi =>
-      let lamType ← ppExpr (← inferType e)  -- CSC: devi farlo PRIMA di withLocalDecl per non catturare la var
+    let eType ← inferType e  -- tipo dell'intera espressione, NON ridotto
+    dbg_trace s!"eType = {← exprInfo eType}"
+    match eType with
+    | .app (.const ``Not []) (.fvar _) =>
+      -- È ¬P: il tipo è `Not P`, non `P → False`
+      let tKind ← inferType t
+      let ruleName := if tKind.isProp then "¬I" else "∀I"
+      withLocalDecl n bi t fun fv => do
+        let lamType ← ppExpr eType  -- mostrerà "¬P" e non "P → False"
+        let child ← (b.instantiate1 fv).toNDTreeM ([← fv.toNDTreeM] ++ hypotesis)
+        return .node hypotesis s!"{lamType}" s!"{ruleName}" [child]
+    | _ =>
+      -- È →I o ∀I
+      let lamType ← ppExpr eType
       let tKind ← inferType t
       let ruleName := if tKind.isProp then "→I" else "∀I"
       withLocalDecl n bi t fun fv => do
-       let child ← (b.instantiate1 fv).toNDTreeM
-       return .node [child] s!"{lamType}" ruleName
+        let child ← (b.instantiate1 fv).toNDTreeM ([← fv.toNDTreeM] ++ hypotesis)
+        return .node hypotesis s!"{lamType}" s!"{ruleName}" [child]
 
   /-  XXX TODO codice bacato
     | .forallE n t b bi =>
@@ -204,21 +182,21 @@ partial def Lean.Expr.toNDTreeM (e : Expr) : MetaM NDTree := do
 
   | .letE _ _ _ body _ => body.toNDTreeM
   | .proj _ _ e         => e.toNDTreeM -/
-  | .mdata _ e          => e.toNDTreeM
+  | .mdata _ e          => e.toNDTreeM hypotesis
   | .fvar id => do
       let decl ← Meta.getFVarLocalDecl (.fvar id)
       return .leaf (toString (← ppExpr decl.type)) false
-  | .mvar _ => return .leaf s!"{← ppExpr (← inferType e)}" true -- qui è open
+  | .mvar _ => return .node hypotesis s!"{← ppExpr (← inferType e)}" "" [] -- qui è open
   | e => return .unhandled s!"{← ppExpr e}" s!"{← ppExpr (← inferType e)}"
   where
     isHygienicName (n : Name) : Bool :=
       n.toString.contains "_@" || n.toString.contains "_hyg"
-
+end
 -- ══════════════════════════════════════════════════════════════════
 -- RPC METHOD: GET TREE AS JSON
 -- ══════════════════════════════════════════════════════════════════
 
-def reprLCtx (G: LocalContext) : Format :=
+def reprInfoLCtx (G: LocalContext) : Format :=
  G.decls.foldl
   (fun s i =>
     match i with
@@ -253,15 +231,15 @@ def getTreeAsJson (params : DeductionAtCursorParams) :
       metavarctx.eAssignment.foldl (fun m d _ => if younger m.name d.name then m else d) (MVarId.mk (.num (.anonymous) 0))
      let proofTerm := Expr.mvar mmmid
      /- for debugging -/
-     metavarctx.decls.forM (fun id i => id.withContext do dbg_trace s!"{reprLCtx (← getLCtx)} ⊢ {id.name} : {← exprInfo i.type}")
-     metavarctx.eAssignment.forM (fun id e => id.withContext do dbg_trace s!"{reprLCtx (← getLCtx)} ⊢ {id.name} e↦ {← exprInfo e}")
-     metavarctx.dAssignment.forM (fun id i => id.withContext do dbg_trace s!"{reprLCtx (← getLCtx)} ⊢ {id.name} d↦ {i.fvars} ⊢ {i.mvarIdPending.name}")
+     -- metavarctx.decls.forM (fun id i => id.withContext do dbg_trace s!"{reprLCtx (← getLCtx)} ⊢ {id.name} : { repr i.type}")
+     -- metavarctx.eAssignment.forM (fun id e => id.withContext do dbg_trace s!"{reprLCtx (← getLCtx)} ⊢ {id.name} e↦ {repr e}")
+     -- metavarctx.dAssignment.forM (fun id i => id.withContext do dbg_trace s!"{reprLCtx (← getLCtx)} ⊢ {id.name} d↦ {i.fvars} ⊢ {i.mvarIdPending.name}")
      /- -/
      -- dbg_trace s!"La mvar si chiama {mmmid.name}"
      mmmid.withContext do
       let tree ← proofTerm.toNDTreeM
-      -- dbg_trace s!"Found proof term for {name}: {← exprInfo proofTerm}"
-      dbg_trace s!"Found proof term for {name}:= {← exprInfo proofTerm} : {← ppExpr (← inferType proofTerm)} == {tyStr}"
+      -- dbg_trace s!"Found proof term for {name}: {← exprInf proofTerm}"
+      -- dbg_trace s!"Found proof term for {name}:= {← exprInf proofTerm} : {← ppExpr (← inferType proofTerm)} == {tyStr}"
       return { thmName := toString name, thmType := toString tyStr, treeJson := s!"{tree.toJson}" }
 
 -- ══════════════════════════════════════════════════════════════════
@@ -276,16 +254,19 @@ def NDTreeJsonViewerWidget : Widget.Module where
 /-
 ═══════════════════════════════════════════════════════════════════
 TODO:
-- a) a volte il JSON contiene caratteri non permessi (trovare la lista dei caratteri accettati) ✓
+- a)  [✓] a volte il JSON contiene caratteri non permessi (trovare la lista dei caratteri accettati)
     json non accetta tutti i caratteri escaped, quindi ho risolto eliminandoli dal json finale nel caso vengano prodotti.
     const validJSON = res.treeJson.replace(/[\x00-\x1F\x7F-\x9F]/g, '');
-- c) verificare se gli alberi sono esatti e ragionevoli
-- d) problema di taglia degli alberi, che sforano a sinistra
-- e) capire come gestire le foglie scaricate
-- f₁) riconoscere il caso ¬e ✓
-- f₂) riconoscere il caso ¬i
-- f₃) ∀ non testato
-
+- c)  [_] verificare se gli alberi sono esatti e ragionevoli
+- d₁) [_] problema di taglia degli alberi, che sforano a sinistra
+- d₂) [_] refactor grafico: le linee orizzontali degli alberi devono essere lunghe tanto quanto il massimo tra la larghezza del nodo padre e la larghezza del primo figlio.
+- d₃) [_] aggiungere un modo per visualizzare gli unhandled.
+- e)  [_] capire come gestire le foglie scaricate → struttura dati,
+- f₁) [✓] riconoscere il caso ¬e ✓
+- f₂) [_] riconoscere il caso ¬i
+- f₃) [_] ∀ non testato
+- f₄) [_] nel caso in cui ci siano più →E, vengono messe in una sola riga, ma bisogna renderle più di una.
+- h)  [_] gestione del caso have (creazione di alberi "separati")
 
 
 
