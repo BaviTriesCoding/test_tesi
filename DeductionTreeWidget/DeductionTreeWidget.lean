@@ -151,25 +151,23 @@ partial def Lean.Expr.toNDTreeM (e : Expr) (hypotesis : List NDTree := []) : Met
   -- →I se il binder è una Prop (scarica un'assunzione)
   -- ∀I se il binder è un Type (introduce una variabile)
   | .lam n t b bi =>
-    let eType ← inferType e  -- tipo dell'intera espressione, NON ridotto
-    dbg_trace s!"eType = {← exprInfo eType}"
-    match eType with
-    | .app (.const ``Not []) (.fvar _) =>
-      -- È ¬P: il tipo è `Not P`, non `P → False`
-      let tKind ← inferType t
-      let ruleName := if tKind.isProp then "¬I" else "∀I"
-      withLocalDecl n bi t fun fv => do
-        let lamType ← ppExpr eType  -- mostrerà "¬P" e non "P → False"
-        let child ← (b.instantiate1 fv).toNDTreeM ([← fv.toNDTreeM] ++ hypotesis)
-        return .node hypotesis s!"{lamType}" s!"{ruleName}" [child]
-    | _ =>
-      -- È →I o ∀I
-      let lamType ← ppExpr eType
-      let tKind ← inferType t
-      let ruleName := if tKind.isProp then "→I" else "∀I"
-      withLocalDecl n bi t fun fv => do
-        let child ← (b.instantiate1 fv).toNDTreeM ([← fv.toNDTreeM] ++ hypotesis)
-        return .node hypotesis s!"{lamType}" s!"{ruleName}" [child]
+      match (← inferType b) with
+      | .const `False [] =>
+        let tKind ← inferType t
+        let ruleName := if tKind.isProp then "¬I" else "∀I"
+        withLocalDecl n bi t fun fv => do
+          let lamType ← ppExpr (Expr.app (Expr.const `Not  []) (← inferType fv))
+          -- dbg_trace s!"aggiungo ipotesi: {← ppExpr (fv)} : {← ppExpr t}"
+          let child ← (b.instantiate1 fv).toNDTreeM ([← fv.toNDTreeM] ++ hypotesis)
+          return .node hypotesis s!"{lamType}" s!"{ruleName}" [child]
+      | _ =>
+        let lamType ← ppExpr (← inferType e)  -- CSC: devi farlo PRIMA di withLocalDecl per non catturare la var
+        let tKind ← inferType t
+        let ruleName := if tKind.isProp then "→I" else "∀I"
+        withLocalDecl n bi t fun fv => do
+          -- dbg_trace s!"aggiungo ipotesi: {← ppExpr (fv)} : {← ppExpr t}"
+          let child ← (b.instantiate1 fv).toNDTreeM ([← fv.toNDTreeM] ++ hypotesis)
+          return .node hypotesis s!"{lamType}" s!"{ruleName}" [child]
 
   /-  XXX TODO codice bacato
     | .forallE n t b bi =>
