@@ -1,6 +1,7 @@
 import Lean
 open Lean Meta
 
+
 partial def withAggressiveInstantiateMVars (e: Expr) (k: Expr → MetaM α) : MetaM α := do
  let e ← instantiateMVars e
  match e with
@@ -36,8 +37,13 @@ partial def exprInfo (e : Expr) : MetaM String := do
   | .mvar id          => return s!".mvar {id.name}"
   | .sort lvl         => return s!".sort {lvl}"
   | .const name us    => return s!".const {name} {us}"
-  | .app fn arg       =>
-      return s!".app ({← exprInfo fn}) ({← exprInfo arg})"
+  | .app _ _       =>
+    let (fn, args) := e.withApp fun e a => (e, a)
+    match fn with
+    | .const `sorryAx _ => return "sorry"
+    | _ =>
+      let argsInfo := (← args.mapM exprInfo).toList
+      return s!".app ({← exprInfo fn}) ( {", ".intercalate argsInfo})"
   | .lam n t b bi =>
     withLocalDecl n bi t fun fv => do
       let child := (b.instantiate1 fv)
@@ -47,14 +53,13 @@ partial def exprInfo (e : Expr) : MetaM String := do
       return s!".lam {displayName} : ({tStr}) => ({bStr})"
   | .forallE n t b bi =>
     withLocalDecl n bi t fun fv => do
-    let child := (b.instantiate1 fv)
     if e.isArrow then  -- CSC XXX TODO bug, reimplementare, violiamo l'invariante richiesto
       -- non dipendente: ignora il nome del binder
-      return s!"({← exprInfo t}) → ({← exprInfo child})"
-    else
-      let tStr ← exprInfo t
-      let bStr ← exprInfo b
-      return s!"∀ {n} : ({tStr}), ({bStr})"
+      return s!".forallE {if isHygienicName n then "⨯" else n.toString} ({← exprInfo t}) → ({← exprInfo b})"
+    let child := (b.instantiate1 fv)
+    let tStr ← exprInfo t
+    let bStr ← exprInfo b
+    return s!"∀ {n} : ({tStr}), ({bStr})"
   | .letE n t v b nondep   =>
       let tStr ← exprInfo t
       let vStr ← exprInfo v
@@ -67,3 +72,6 @@ partial def exprInfo (e : Expr) : MetaM String := do
   | .mdata _ e        => exprInfo e
   | .proj tn idx s    =>
       return s!".proj {tn}.{idx} ({← exprInfo s})"
+  where
+    isHygienicName (n : Name) : Bool :=
+      n.toString.contains "_@" || n.toString.contains "_hyg"

@@ -6,9 +6,6 @@ import DeductionTreeWidget.DeductionTreeWidget
 -- LOGICA
 -- =================
 
-macro "and_e" h:term:max ppSpace colGt l1:ident ppSpace colGt l2:ident : tactic =>
- `(tactic|refine And.casesOn $h (fun $l1 $l2 => ?_))
-
 macro "or_e" h:term:max ppSpace colGt l1:ident ppSpace colGt l2:ident : tactic =>
  `(tactic|refine Or.casesOn $h (fun $l1 => ?_) (fun $l2 => ?_))
 
@@ -27,26 +24,16 @@ theorem ImplIntroElim {A P Q R : Prop} (h: P -> Q) (p: A → R → P) (a : A) : 
  apply h (p a r)
 
 -- CSC XXX Bug applicazione multipla
-theorem impmul{P Q R  : Prop} (h: P → Q → R) : P → Q → R := by
+theorem impmul (P Q R: Prop) (h: P → Q → R) : P → Q → R := by
  intro p q
  apply h p q
 
-theorem Andleft' (P Q : Prop) (h : P ∧ Q) : P := by
- exact And.casesOn h (fun p q => p)
-
-theorem Andleft'' (P Q : Prop) (h : P ∧ Q) : P := by
+theorem Andleft (P Q : Prop) (h : P ∧ Q) : P := by
  apply And.left h
 
-theorem Andleft (P Q : Prop) (h : P ∧ Q) : P := by
- and_e h p _q
- exact p
-
-theorem Andright'' (P Q : Prop) (h : P ∧ Q) : Q := by
+theorem Andright (P Q : Prop) (h : P ∧ Q) : Q := by
  apply And.right h
 
-theorem Andright (P Q : Prop) (h : P ∧ Q) : Q := by
-  and_e h _p q
-  exact q
 
 theorem AndIntro (P Q : Prop) (h1 : P) (h2 : Q) : P ∧ Q := by
   apply And.intro
@@ -110,5 +97,8 @@ theorem andAnd (A B C : Prop) (h : A ∧ (B ∧ C)) : C := by
   have h1 : B ∧ C := And.right h
   have c : C := And.right h1
   exact c
+
+
+
 -- Per disattivare il widget in una sezione:
 show_panel_widgets [- NDTreeJsonViewerWidget]
