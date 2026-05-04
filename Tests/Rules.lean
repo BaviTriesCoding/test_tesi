@@ -9,6 +9,8 @@ import DeductionTreeWidget.DeductionTreeWidget
 macro "or_e" h:term:max ppSpace colGt l1:ident ppSpace colGt l2:ident : tactic =>
  `(tactic|refine Or.casesOn $h (fun $l1 => ?_) (fun $l2 => ?_))
 
+macro "and_e" h:term:max ppSpace colGt l1:ident ppSpace colGt l2:ident : tactic =>
+ `(tactic|refine And.casesOn $h (fun $l1 $l2 => ?_))
 -- ══════════════════════════════════════════════════════════════════
 -- ATTIVA I WIDGET
 -- ══════════════════════════════════════════════════════════════════
