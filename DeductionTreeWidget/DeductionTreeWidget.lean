@@ -318,5 +318,9 @@ TODO:
           il bug sembra esserci anche per la resa dei nodi (ma può avere una causa diversa)
 - l)  [ ] gestisci il caso .const (ora unhandled)
 - m)  [ ] set theory ex. 8 unexpected bound variable
+- n)  [ ] refactoring del codice partendo dalla get_app_fn_args e poi facendo pattern matching
+          doppio e profondo su testa e argomenti
+          Nota: per iniziare usa unhandled in tutti i casi in cui i vari orElim etc. non sono
+          come li vorresti; più avanti si può pensare a cosa fare nei casi residui
 ════════════════════════════════════════════════════════════════════
 -/
