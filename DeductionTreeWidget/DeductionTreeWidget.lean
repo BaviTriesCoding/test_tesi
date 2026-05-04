@@ -206,7 +206,7 @@ partial def Lean.Expr.toNDTreeM (e : Expr) (hypotheses : List Hyp := []) : MetaM
           let child ← (b.instantiate1 fv).toNDTreeM ([(n, ← fv.toNDTreeM)] ++ hypotheses)
           return .node hypotheses s!"{lamType}" s!"{ruleName}" [child]
       | _ =>
-        let lamType ← ppExpr (← inferType e)  -- CSC: devi farlo PRIMA di withLocalDecl per non catturare la var
+        let lamType ← ppExpr (← inferType e)
         let tKind ← inferType t
         let ruleName := if tKind.isProp then "→I" else "∀I"
         withLocalDecl n bi t fun fv => do
