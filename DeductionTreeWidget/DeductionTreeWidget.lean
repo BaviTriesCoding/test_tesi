@@ -304,10 +304,10 @@ TODO:
     json non accetta tutti i caratteri escaped, quindi ho risolto eliminandoli dal json finale nel caso vengano prodotti.
     const validJSON = res.treeJson.replace(/[\x00-\x1F\x7F-\x9F]/g, '');
 - c)  [_] verificare se gli alberi sono esatti e ragionevoli
-- d₁) [✓] problema di taglia degli alberi, che sforano a sinistra
+- d₁) [ ] problema di taglia degli alberi, che sforano a sinistra
 - d₂) [_] refactor grafico: le linee orizzontali degli alberi devono essere lunghe tanto quanto il massimo tra la larghezza del nodo padre e la larghezza del primo figlio.
 - d₃) [_] aggiungere un modo per visualizzare gli unhandled.
-- e)  [_] capire come gestire le foglie scaricate → struttura dati,
+- e)  [✓] capire come gestire le foglie scaricate → struttura dati,
 - f₁) [✓] riconoscere il caso ¬e ✓
 - f₂) [✓] riconoscere il caso ¬i
 - f₃) [_] ∀ non testato
@@ -317,5 +317,6 @@ TODO:
           di non occorrenza delle bvar e quindi alcuni diventano forall;
           il bug sembra esserci anche per la resa dei nodi (ma può avere una causa diversa)
 - l)  [ ] gestisci il caso .const (ora unhandled)
+- m)  [ ] set theory ex. 8 unexpected bound variable
 ════════════════════════════════════════════════════════════════════
 -/
