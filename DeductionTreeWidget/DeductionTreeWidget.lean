@@ -287,7 +287,7 @@ def getTreeAsJson (params : DeductionAtCursorParams) :
         let tree ← proofTerm.toNDTreeM
         -- dbg_trace s!"Found proof term for {name}: {← exprInf proofTerm}"
         -- dbg_trace s!"Found proof term for {name}:= {← exprInf proofTerm} : {← ppExpr (← inferType proofTerm)} == {tyStr}"
-        return { thmName := toString name, thmType := s!"{← ppExpr (← inferType proofTerm)}", treeJson := s!"{tree.toJson}" }
+        return { thmName := toString name, thmType := s!"{← reprLCtx (verbose:=true) (← getLCtx)} ⊢ {← ppExpr (← inferType proofTerm)}", treeJson := s!"{tree.toJson}" }
 
 -- ══════════════════════════════════════════════════════════════════
 -- WIDGET JAVASCRIPT
