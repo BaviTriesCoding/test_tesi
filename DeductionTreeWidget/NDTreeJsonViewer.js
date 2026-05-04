@@ -1,148 +1,294 @@
 import * as React from "react";
-const { useState, useEffect, useContext } = React;
+const { useState, useEffect, useContext, createContext } = React;
 import { useRpcSession, EditorContext } from "@leanprover/infoview";
+
+// ──────────────────────────────────────────────────────────────────
+// Style constants (invariati)
+// ──────────────────────────────────────────────────────────────────
+const versionInfo = `Loaded: ${new Date().toLocaleTimeString()}`;
+const WHITE = "#d4d4d4";
+const LIGHTER_GRAY = "#858585";
+const LIGHT_GRAY = "#3c3c3c";
+const DARK_GRAY = "#1e1e1e";
+const ACCENT = "#f57d33";
+const PRIMARY = "#42729b";
+const LIGHT_PRIMARY = "#708ba3";
+const ERROR_RED = "#f44747";
+
+const containerStyle = {
+  background: "#1e1e1e",
+  color: "#d4d4d4",
+  fontFamily: "monospace",
+  fontSize: "12px",
+  minHeight: "60px",
+  overflowX: "auto",
+  padding: "0.5rem",
+};
+
+const buttonStyle = {
+  background: "#2d2d30",
+  border: "1px solid #3c3c3c",
+  color: "#d4d4d4",
+  padding: "4px 8px",
+  marginRight: "6px",
+  marginBottom: "8px",
+  borderRadius: "3px",
+  cursor: "pointer",
+  fontSize: "11px",
+  userSelect: "none",
+};
+
+// ──────────────────────────────────────────────────────────────────
+// HypothesesContext
+// ──────────────────────────────────────────────────────────────────
+
+const HypothesesContext = createContext({
+  hypotheses: [],
+  setHypotheses: () => {},
+});
 
 // ──────────────────────────────────────────────────────────────────
 // Natural Deduction Tree Node Renderer
 // ──────────────────────────────────────────────────────────────────
 
-// Gap in px between sibling premise subtrees
-const PREMISE_GAP = 16;
-
-function NDTreeNode({ node, depth = 0 }) {
-  if (!node) return null;
-
-  const isLeaf      = !node.children || node.children.length === 0;
-  const isClosed    = node.isDischarged === false;
-  const isUnhandled = !!node.isUnhandled;
-
-  const formulaText = node.formula ?? "?";
-  const displayText = isLeaf && isClosed ? `[${formulaText}]` : formulaText;
-
-  const formulaColor = isUnhandled ? "#f0a050" : "#d4d4d4";
-  const formulaStyle = {
-    color: formulaColor,
-    whiteSpace: "nowrap",
-    fontSize: "13px",
-    fontFamily: "monospace",
-    padding: "1px 2px",
-  };
-
-  // ── LEAF: no bar, just the formula (possibly bracketed / highlighted)
-  if (isLeaf) {
-    return React.createElement(
-      "div",
-      {
-        style: {
-          display: "inline-block",
-          textAlign: "center",
-          verticalAlign: "bottom",
-          ...(isUnhandled && {
-            outline: "1px dashed #f0a050",
-            borderRadius: "2px",
-            padding: "1px 3px",
-          }),
-        },
-      },
-      React.createElement("span", { style: formulaStyle }, displayText),
-      isUnhandled
-        ? React.createElement(
-            "div",
-            {
-              style: {
-                fontSize: "9px",
-                color: "#f0a050",
-                letterSpacing: "0.05em",
-                marginTop: "1px",
-              },
-            },
-            "⚠ unhandled",
-          )
-        : null,
-    );
-  }
-
-  // ── INTERNAL NODE
-  //
-  // display:inline-block → the node width = max(children_row, conclusion).
-  // The bar wrapper uses width:100% to always span that max.
-  // The rule label is position:absolute so it never inflates the node width.
+const Leaf = ({ name, formula, isDischarged }) => {
   return React.createElement(
     "div",
     {
       style: {
-        display: "inline-block",
-        textAlign: "center",
-        verticalAlign: "bottom",
+        display: "inline-flex",
+        flexDirection: "column",
+        alignItems: "center",
+        padding: "0 6px",
+        color: "green",
       },
     },
+    React.createElement(
+      "span",
+      { style: { whiteSpace: "nowrap" } },
+      `${isDischarged ? "[" : ""}${name} : ${formula}${isDischarged ? "]" : ""}`,
+    ),
+  );
+};
 
-    // ── children row (inline-flex → shrink-wraps to exact content width)
+const Node = ({ hypotheses, formula, rule, children }) => {
+  const { sharedHypotheses, setHypotheses } = useContext(HypothesesContext);
+  const [selected, setSelected] = useState(false);
+
+  useEffect(() => {
+    if (selected && sharedHypotheses !== hypotheses) {
+      setSelected(false);
+    }
+  }, [sharedHypotheses]);
+
+  const handleClick = () => {
+    setSelected((prev) => {
+      const newSelected = !prev;
+      setHypotheses(newSelected ? (hypotheses ?? []) : []);
+      return newSelected;
+    });
+  };
+
+  return React.createElement(
+    "div",
+    {
+      style: {
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        padding: "0 .1rem",
+      },
+    },
+    // ── Premesse affiancate ──
     React.createElement(
       "div",
       {
         style: {
-          display: "inline-flex",
-          justifyContent: "center",
+          display: "flex",
+          flexDirection: "row",
           alignItems: "flex-end",
-          gap: `${PREMISE_GAP}px`,
-          whiteSpace: "nowrap",
+          gap: "16px",
+          paddingBottom: "2px",
         },
       },
-      node.children.map((p, i) =>
-        React.createElement(NDTreeNode, { key: i, node: p, depth: depth + 1 }),
+      children.map((child, i) =>
+        React.createElement(NDTree, { key: i, tree: child }),
       ),
     ),
-
-    // ── Bar + rule label
+    // ── Barra + regola ──
     React.createElement(
       "div",
       {
         style: {
           position: "relative",
-          margin: "5px 0 3px 0",
+          display: "flex",
+          flexDirection: "row",
+          alignItems: "center",
           width: "100%",
         },
       },
-      // Horizontal rule — always as wide as the inline-block container
       React.createElement("div", {
         style: {
-          borderTop: isUnhandled
-            ? "1.5px dashed #f0a050"
-            : "1.5px solid #858585",
-          width: "100%",
+          flexGrow: 1,
+          height: "0.1rem",
+          background: WHITE,
         },
       }),
-      // Rule label: absolute, right of the bar, never affects layout
-      node.rule
-        ? React.createElement(
-            "span",
-            {
-              style: {
-                position: "absolute",
-                left: "calc(100% + 8px)",
-                top: "50%",
-                transform: "translateY(-50%)",
-                color: isUnhandled ? "#f0a050" : "#9cdcfe",
-                fontSize: "11px",
-                fontStyle: "italic",
-                whiteSpace: "nowrap",
-                userSelect: "none",
-              },
-            },
-            isUnhandled ? `⚠ ${node.rule}` : node.rule,
-          )
-        : null,
+      React.createElement(
+        "span",
+        {
+          style: {
+            marginLeft: "5px",
+            color: LIGHTER_GRAY,
+            fontSize: "10px",
+            whiteSpace: "nowrap",
+            userSelect: "none",
+            lineHeight: 1,
+          },
+        },
+        rule,
+      ),
     ),
-
-    // ── Conclusion formula
+    // ── Conclusione (cliccabile) ──
     React.createElement(
-      "div",
-      { style: { display: "inline-block", whiteSpace: "nowrap" } },
-      React.createElement("span", { style: formulaStyle }, displayText),
+      "span",
+      {
+        style: {
+          color: WHITE,
+          background: selected
+            ? `color-mix(in srgb, ${ACCENT}, rgba(255, 255, 255, 0.1))`
+            : "transparent",
+          padding: "0.05rem 0.2rem",
+          cursor: "pointer",
+          whiteSpace: "nowrap",
+          marginTop: "0.1rem",
+        },
+        onClick: handleClick,
+      },
+      formula,
     ),
   );
-}
+};
+
+const OpenNode = ({ hypotheses, formula }) => {
+  const { sharedHypotheses, setHypotheses } = useContext(HypothesesContext);
+  const [selected, setSelected] = useState(false);
+
+  useEffect(() => {
+    if (selected && sharedHypotheses !== hypotheses) {
+      setSelected(false);
+    }
+  }, [sharedHypotheses]);
+
+  const handleClick = () => {
+    setSelected((prev) => {
+      const newSelected = !prev;
+      setHypotheses(newSelected ? (hypotheses ?? []) : []);
+      return newSelected;
+    });
+  };
+
+  return React.createElement(
+    "div",
+    {
+      style: {
+        display: "inline-flex",
+        flexDirection: "column",
+        alignItems: "center",
+        padding: "0 4px",
+      },
+    },
+    React.createElement(
+      "span",
+      {
+        style: {
+          color: WHITE,
+          background: selected ? ACCENT : "transparent",
+          border: `1px dashed ${LIGHTER_GRAY}`,
+          padding: "1px 4px",
+          borderRadius: "3px",
+          cursor: "pointer",
+          whiteSpace: "nowrap",
+        },
+        onClick: handleClick,
+      },
+      formula,
+    ),
+  );
+};
+
+const Unhandled = (json) =>
+  React.createElement("div", { style: { color: "red" } }, "unhandled");
+
+const NDTree = ({ tree }) => {
+  switch (tree.type) {
+    case "leaf":
+      return React.createElement(Leaf, { ...tree });
+    case "node":
+      return React.createElement(Node, { ...tree });
+    case "openNode":
+      return React.createElement(OpenNode, { ...tree });
+    default:
+      return React.createElement(Unhandled, tree.stringify?.() ?? "unhandled");
+  }
+};
+
+// ──────────────────────────────────────────────────────────────────
+// HypothesesDisplay — mostra le ipotesi affiancate
+// ──────────────────────────────────────────────────────────────────
+
+const HypothesesDisplay = () => {
+  const { sharedHypotheses } = useContext(HypothesesContext);
+
+  return React.createElement(
+    "div",
+    {
+      style: {
+        background: DARK_GRAY,
+        padding: "0.5rem",
+        borderRadius: "4px",
+        display: "flex",
+        flexDirection: "row",
+        overflowX: "auto",
+        alignItems: "center",
+        gap: "0.5rem",
+        minHeight: "36px",
+      },
+    },
+    React.createElement(
+      "span",
+      { style: { color: LIGHTER_GRAY, flexShrink: 0 } },
+      `Ipotesi (${sharedHypotheses.length}):`,
+    ),
+    sharedHypotheses.length === 0
+      ? React.createElement(
+          "span",
+          { style: { color: LIGHTER_GRAY, fontStyle: "italic" } },
+          "nessuna — clicca un nodo",
+        )
+      : sharedHypotheses.map((hyp, i) =>
+          React.createElement(
+            "span",
+            {
+              key: i,
+              style: {
+                background: LIGHT_GRAY,
+                border: `1px solid ${PRIMARY}`,
+                borderRadius: "3px",
+                padding: "2px 6px",
+                color: WHITE,
+                whiteSpace: "nowrap",
+              },
+            },
+            React.createElement(Leaf, {
+              name: hyp.name,
+              formula: hyp.value.formula,
+              isDischarged: false,
+            }),
+          ),
+        ),
+  );
+};
 
 // ──────────────────────────────────────────────────────────────────
 // Main Widget
@@ -150,12 +296,10 @@ function NDTreeNode({ node, depth = 0 }) {
 
 export default function NDTreeViewer(props) {
   const rs = useRpcSession();
-  const ec = useContext(EditorContext);
 
-  const [result, setResult]           = useState(null);
-  const [error, setError]             = useState(null);
-  const [showRaw, setShowRaw]         = useState(false);
-  const [copySuccess, setCopySuccess] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState(null);
+  const [sharedHypotheses, setHypotheses] = useState([]);
 
   useEffect(() => {
     const pos = props.pos;
@@ -165,180 +309,92 @@ export default function NDTreeViewer(props) {
       .then((res) => {
         const validJSON = res.treeJson.replace(/[\x00-\x1F\x7F-\x9F]/g, "");
         const tree = JSON.parse(validJSON);
-        setResult({ name: res.thmName, type: res.thmType, tree, treeJson: res.treeJson });
-        setCopySuccess(false);
+        setResult({
+          name: res.thmName,
+          type: res.thmType,
+          tree,
+          treeJson: res.treeJson,
+        });
+        setHypotheses([]); // reset al cambio di teorema
       })
       .catch((e) => setError(e.message ?? "Errore RPC sconosciuto"));
     console.log("Fetching NDTree for position", pos);
   }, [props.pos, rs]);
 
-  const containerStyle = {
-    background: "#1e1e1e",
-    color: "#d4d4d4",
-    padding: "12px",
-    fontFamily: "monospace",
-    fontSize: "12px",
-    minHeight: "60px",
-    overflowX: "auto",
-  };
-
-  const headerStyle = {
-    borderBottom: "1px solid #3c3c3c",
-    marginBottom: "10px",
-    paddingBottom: "6px",
-  };
-
-  const buttonStyle = {
-    background: "#2d2d30",
-    border: "1px solid #3c3c3c",
-    color: "#d4d4d4",
-    padding: "4px 8px",
-    marginRight: "6px",
-    marginBottom: "8px",
-    borderRadius: "3px",
-    cursor: "pointer",
-    fontSize: "11px",
-    userSelect: "none",
-  };
-
   if (!rs)
     return React.createElement(
       "div",
-      { style: { ...containerStyle, color: "#f44747" } },
-      "⚠ RpcContext non disponibile",
+      { style: { ...containerStyle, color: ERROR_RED } },
+      `⚠ RpcContext non disponibile (${versionInfo})`,
     );
 
   if (error)
     return React.createElement(
       "div",
-      { style: { ...containerStyle, color: "#f44747" } },
-      "⚠ ",
-      error,
+      { style: { ...containerStyle, color: ERROR_RED } },
+      `⚠ ${error} (${versionInfo})`,
     );
 
   if (!result)
     return React.createElement(
       "div",
-      { style: { ...containerStyle, color: "#858585" } },
-      "Sposta il cursore su un teorema per visualizzare l'NDTree...",
+      { style: { ...containerStyle, color: LIGHTER_GRAY } },
+      `Sposta il cursore su un teorema per visualizzare l'NDTree... (${versionInfo})`,
     );
-
-  const copyToClipboard = () => {
-    navigator.clipboard.writeText(result.treeJson).then(() => {
-      setCopySuccess(true);
-      setTimeout(() => setCopySuccess(false), 2000);
-    });
-  };
 
   return React.createElement(
     "div",
-    { style: containerStyle },
-
-    // ── Header
-    React.createElement(
-      "div",
-      { style: headerStyle },
-      React.createElement(
-        "span",
-        { style: { color: "#9cdcfe", fontWeight: "bold" } },
-        result.name,
-      ),
-      React.createElement("span", { style: { color: "#858585" } }, " : "),
-      React.createElement("span", { style: { color: "#ce9178" } }, result.type),
-    ),
-
-    // ── Subtitle
+    {
+      style: {
+        ...containerStyle,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "start",
+        gap: "1rem",
+        padding: "0.5rem",
+      },
+    },
+    // Header: nome e tipo del teorema
     React.createElement(
       "div",
       {
         style: {
-          color: "#858585",
-          marginBottom: "8px",
-          fontSize: "11px",
-          letterSpacing: "0.05em",
+          width: "100%",
+          display: "flex",
+          alignItems: "center",
+          gap: "1rem",
         },
       },
-      "ALBERO DI DEDUZIONE NATURALE",
+      React.createElement(
+        "p",
+        { style: { color: ACCENT, flexGrow: 0, margin: 0 } },
+        result.name + ":",
+      ),
+      React.createElement(
+        "p",
+        { style: { color: LIGHT_PRIMARY, flexGrow: 1, margin: 0 } },
+        result.type,
+      ),
     ),
-
-    // ── Buttons
+    // Corpo: HypothesesDisplay + albero
     React.createElement(
       "div",
-      { style: { marginBottom: "8px" } },
-      React.createElement(
-        "button",
-        {
-          style: { ...buttonStyle, background: showRaw ? "#0e639c" : "#2d2d30" },
-          onClick: () => setShowRaw(!showRaw),
+      {
+        style: {
+          display: "flex",
+          flexDirection: "column",
+          overflowX: "auto",
+          gap: "0.5rem",
+          width: "100%",
+          outline: `1px solid ${LIGHT_GRAY}`,
         },
-        showRaw ? "🌲 Vista Albero" : "📄 Vista Raw JSON",
+      },
+      React.createElement(
+        HypothesesContext.Provider,
+        { value: { sharedHypotheses, setHypotheses } },
+        React.createElement(HypothesesDisplay, null),
+        React.createElement(NDTree, { tree: result.tree }),
       ),
-      !showRaw &&
-        React.createElement(
-          "button",
-          { style: buttonStyle, onClick: copyToClipboard },
-          copySuccess ? "✓ Copiato!" : "📋 Copia JSON",
-        ),
     ),
-
-    // ── Content
-    showRaw
-      ? React.createElement(
-          "div",
-          {
-            style: {
-              background: "#1a1a1a",
-              border: "1px solid #3c3c3c",
-              borderRadius: "3px",
-              padding: "8px",
-              overflowX: "auto",
-              fontSize: "11px",
-              lineHeight: "1.5",
-              color: "#ce9178",
-              whiteSpace: "pre-wrap",
-              wordBreak: "break-word",
-              maxHeight: "500px",
-              overflowY: "auto",
-            },
-          },
-          JSON.stringify(result.tree, null, 2),
-        )
-      : // ── Tree view
-        // FIX for left-overflow scroll bug:
-        // Using overflow-x:auto on a block container with text-align:center
-        // and the tree as an inline-block child.
-        // This works correctly because the scrollable area expands in BOTH
-        // directions when the inline-block overflows, unlike flex+justify-center
-        // which clips the left side and makes it un-scrollable.
-        React.createElement(
-          "div",
-          {
-            style: {
-              background: "#1a1a1a",
-              border: "1px solid #3c3c3c",
-              borderRadius: "3px",
-              padding: "24px 80px 16px 16px", // extra right padding for rule labels
-              overflowX: "auto",
-              overflowY: "auto",
-              maxHeight: "500px",
-              // Use text-align:center so the inline-block tree centres, but
-              // overflow in both directions stays scrollable.
-              textAlign: "center",
-              whiteSpace: "nowrap",
-            },
-          },
-          React.createElement(
-            "div",
-            {
-              style: {
-                // inline-block so text-align:center applies and the div
-                // shrink-wraps to the tree content (enabling correct scroll)
-                display: "inline-block",
-                textAlign: "left",
-              },
-            },
-            React.createElement(NDTreeNode, { node: result.tree }),
-          ),
-        ),
   );
 }

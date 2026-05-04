@@ -17,7 +17,7 @@ inductive NDTree where
   | unhandled : Proof → Formula → NDTree                        -- Per rappresentare i nodi che non siamo ancora in grado di gestire
   deriving FromJson, ToJson, Server.RpcEncodable
 
-abbrev Hypotesis := (Name × NDTree)
+abbrev Hyp := (Name × NDTree)
 
 
 partial def NDTree.toJson : NDTree → String
@@ -26,25 +26,25 @@ partial def NDTree.toJson : NDTree → String
       \"type\":\"leaf\",
       \"name\":\"" ++ name.toString ++ "\",
       \"formula\":\""++ f ++"\",
-      \"isDischarged\":\"" ++ s!"{repr isDischarged}" ++ "\"
+      \"isDischarged\":" ++ s!"{repr isDischarged}" ++ "
     }"
-  | .node hypoteses f rule children =>
+  | .node hypotheses f rule children =>
     "{
       \"type\":\"node\",
       \"formula\":\"" ++ f ++ "\",
       \"rule\": \"" ++ rule ++ "\",
-      \"hypotesis\": [" ++ ", ".intercalate (hypoteses.map fun ⟨name, value⟩ =>
+      \"hypotheses\": [" ++ ", ".intercalate (hypotheses.map fun ⟨name, value⟩ =>
       "{
         \"name\":\"" ++ name.toString ++ "\",
         \"value\":" ++ value.toJson ++ "
       }") ++ "],
       \"children\": [" ++ ", ".intercalate (children.map toJson) ++ "]
     }"
-  | .openNode hypoteses f =>
+  | .openNode hypotheses f =>
     "{
       \"type\":\"openNode\",
       \"formula\":\"" ++ f ++ "\",
-      \"hypotesis\": [" ++ ", ".intercalate (hypoteses.map fun ⟨name, value⟩ =>
+      \"hypotheses\": [" ++ ", ".intercalate (hypotheses.map fun ⟨name, value⟩ =>
       "{
         \"name\":\"" ++ name.toString ++ "\",
         \"value\":" ++ value.toJson ++ "
@@ -119,9 +119,9 @@ mutual
 
 partial def handleSorry (e : Expr) : MetaM NDTree := do
   let resultType ← inferType e
-  return .leaf ``sorryAx s!"{← ppExpr resultType}" true
+  return .leaf ``sorryAx s!"{← ppExpr resultType}" false
 
-partial def handleOrElim (e : Expr) (hypoteses : List Hypotesis) : MetaM NDTree := do
+partial def handleOrElim (e : Expr) (hypotheses : List Hyp) : MetaM NDTree := do
   let (_, args) := e.withApp fun e a => (e, a)
   let children ← args.filterMapM fun arg => do
     if (← inferType (← inferType arg)).isProp then
@@ -130,7 +130,7 @@ partial def handleOrElim (e : Expr) (hypoteses : List Hypotesis) : MetaM NDTree 
         if (← inferType t).isProp then
           withLocalDecl n bi t fun fv => do
             -- dbg_trace s!"aggiungo ipotesi: {← ppExpr (fv)} : {← ppExpr t}"
-            let child ← (b.instantiate1 fv).toNDTreeM ([(n,← fv.toNDTreeM)] ++ hypoteses)
+            let child ← (b.instantiate1 fv).toNDTreeM ([(n,← fv.toNDTreeM)] ++ hypotheses)
             return some child
         else
           return some (← arg.toNDTreeM )
@@ -139,10 +139,10 @@ partial def handleOrElim (e : Expr) (hypoteses : List Hypotesis) : MetaM NDTree 
     else
       return none
   let resultType ← inferType e
-  return .node hypoteses s!"{← ppExpr resultType}" "∨E" children.toList
+  return .node hypotheses s!"{← ppExpr resultType}" "∨E" children.toList
 -- appunto: per gestire i →e multipli, devo controllare se è una forallE con isArrow (quindi un'implicazione) e mettere come argomento solo il primo argomento. Da lì genero il prossimo expr come il body del forall.
 
-partial def Lean.Expr.toNDTreeM (e : Expr) (hypoteses : List Hypotesis := []) : MetaM NDTree := do
+partial def Lean.Expr.toNDTreeM (e : Expr) (hypotheses : List Hyp := []) : MetaM NDTree := do
   withAggressiveInstantiateMVars e fun e => do
   /- for debugging -/
   -- dbg_trace s!"═════════════════════════════════════════════════════════════════════════"
@@ -156,16 +156,16 @@ partial def Lean.Expr.toNDTreeM (e : Expr) (hypoteses : List Hypotesis := []) : 
       let (fn, args) := e.withApp fun e a => (e, a)
       -- dbg_trace s!"ho {args.size} argomenti applicati a {← exprInfo fn}"
       match fn with
-      | .const `sorryAx [] => return ← handleSorry e
-      | .const `Or.casesOn [] => return ← handleOrElim e hypoteses
-      | .mvar _ => return .openNode hypoteses s!"{← ppExpr (← inferType e)}" -- anche qui è open
+      | .const ``sorryAx [] => return ← handleSorry e
+      | .const ``Or.casesOn [] => return ← handleOrElim e hypotheses
+      | .mvar _ => return .openNode hypotheses s!"{← ppExpr (← inferType e)}" -- anche qui è open
       | .const name _ =>
         let mut argList : List NDTree := []
         for arg in args do
           if (← inferType (← inferType arg)).isProp then
-            argList := [← arg.toNDTreeM hypoteses] ++ argList
+            argList := [← arg.toNDTreeM hypotheses] ++ argList
         let resultType ← inferType e
-        return .node hypoteses s!"{← ppExpr resultType}" (ruleNameOf name) argList
+        return .node hypotheses s!"{← ppExpr resultType}" (ruleNameOf name) argList
       | _ =>
         -- NON usare args: prendi solo l'ultimo argomento
         let f   := e.appFn!   -- es: (.app h p)
@@ -174,24 +174,24 @@ partial def Lean.Expr.toNDTreeM (e : Expr) (hypoteses : List Hypotesis := []) : 
         let resultType ← inferType e
         if fTy.isArrow then
           -- →E: due premesse, f ricorso darà il nodo intermedio
-          let fTree   ← f.toNDTreeM hypoteses    -- ricorre su (.app h p) → altro →E
-          let argTree ← arg.toNDTreeM hypoteses  -- q : Q
-          return .node hypoteses s!"{← ppExpr resultType}" "→E" [fTree, argTree]
+          let fTree   ← f.toNDTreeM hypotheses    -- ricorre su (.app h p) → altro →E
+          let argTree ← arg.toNDTreeM hypotheses  -- q : Q
+          return .node hypotheses s!"{← ppExpr resultType}" "→E" [fTree, argTree]
         else
           match fTy with
           | .forallE _ _ _ _ =>
             -- ∀E: arg è un termine, non una Prop
-            let fTree ← f.toNDTreeM hypoteses
-            return .node hypoteses s!"{← ppExpr resultType}" "∀E" [fTree]
+            let fTree ← f.toNDTreeM hypotheses
+            return .node hypotheses s!"{← ppExpr resultType}" "∀E" [fTree]
           | _ =>
             -- Fallback per casi non gestiti
             let (rulename, needshead) ← ruleNameOfApp fn
             let mut argList : List NDTree := []
             for arg in args do
               if (← inferType (← inferType arg)).isProp then
-                argList :=  [← arg.toNDTreeM hypoteses] ++ argList
-            if needshead then argList := (← fn.toNDTreeM hypoteses) :: argList
-            return .node hypoteses s!"{← ppExpr resultType}" rulename argList
+                argList :=  [← arg.toNDTreeM hypotheses] ++ argList
+            if needshead then argList := (← fn.toNDTreeM hypotheses) :: argList
+            return .node hypotheses s!"{← ppExpr resultType}" rulename argList
 
   -- →I se il binder è una Prop (scarica un'assunzione)
   -- ∀I se il binder è un Type (introduce una variabile)
@@ -203,16 +203,16 @@ partial def Lean.Expr.toNDTreeM (e : Expr) (hypoteses : List Hypotesis := []) : 
         withLocalDecl n bi t fun fv => do
           let lamType ← ppExpr (Expr.app (Expr.const `Not  []) (← inferType fv))
           -- dbg_trace s!"aggiungo ipotesi: {← ppExpr (fv)} : {← ppExpr t}"
-          let child ← (b.instantiate1 fv).toNDTreeM ([(n, ← fv.toNDTreeM)] ++ hypoteses)
-          return .node hypoteses s!"{lamType}" s!"{ruleName}" [child]
+          let child ← (b.instantiate1 fv).toNDTreeM ([(n, ← fv.toNDTreeM)] ++ hypotheses)
+          return .node hypotheses s!"{lamType}" s!"{ruleName}" [child]
       | _ =>
         let lamType ← ppExpr (← inferType e)  -- CSC: devi farlo PRIMA di withLocalDecl per non catturare la var
         let tKind ← inferType t
         let ruleName := if tKind.isProp then "→I" else "∀I"
         withLocalDecl n bi t fun fv => do
           -- dbg_trace s!"aggiungo ipotesi: {← ppExpr (fv)} : {← ppExpr t}"
-          let child ← (b.instantiate1 fv).toNDTreeM ([(n,← fv.toNDTreeM)] ++ hypoteses)
-          return .node hypoteses s!"{lamType}" s!"{ruleName}" [child]
+          let child ← (b.instantiate1 fv).toNDTreeM ([(n,← fv.toNDTreeM)] ++ hypotheses)
+          return .node hypotheses s!"{lamType}" s!"{ruleName}" [child]
 
   /-  XXX TODO codice bacato
   | .forallE n t b bi =>
@@ -225,14 +225,14 @@ partial def Lean.Expr.toNDTreeM (e : Expr) (hypoteses : List Hypotesis := []) : 
       -- Implementare questo check in getTreeAsJson
   | .proj _ _ e         => TODO -- CSC: questo può succedere
   -/
-  | .letE name type value body _ => do
-    return ← (body.instantiate1 value).toNDTreeM ([(name,← value.toNDTreeM)] ++ hypoteses)
-  | .mdata _ e          => e.toNDTreeM hypoteses
+  | .letE name _ value body _ => do
+    return ← (body.instantiate1 value).toNDTreeM ([(name,← value.toNDTreeM)] ++ hypotheses)
+  | .mdata _ e          => e.toNDTreeM hypotheses
   | .fvar id => do
       let decl ← Meta.getFVarLocalDecl (.fvar id)
-      let isDischarged : Bool := ((hypoteses.map fun ⟨n, _⟩ => n).contains decl.userName)
+      let isDischarged := ((hypotheses.map fun ⟨n, _⟩ => n).contains decl.userName)
       return .leaf decl.userName (toString (← ppExpr decl.type)) isDischarged
-  | .mvar _ => return .openNode hypoteses s!"{← ppExpr (← inferType e)}" -- qui è open
+  | .mvar _ => return .openNode hypotheses s!"{← ppExpr (← inferType e)}" -- qui è open
   | e => return .unhandled s!"{← ppExpr e}" s!"{← ppExpr (← inferType e)}"
 end
 -- ══════════════════════════════════════════════════════════════════
@@ -261,9 +261,8 @@ def getTreeAsJson (params : DeductionAtCursorParams) :
     let l := Elab.InfoTree.goalsAt? txt snap.infoTree pos
     let [item] := l | throwError "Impossibile trovare il nodo a questa posizione"
     let .some name := item.ctxInfo.parentDecl? | throwError "Impossibile trovare la dichiarazione"
-    let info ← try getConstInfo name
-      catch _ => throwThe RequestError ⟨.invalidParams, s!"Costante '{name}' non trovata"⟩
-    let tyStr ← ppExpr info.type
+    -- let info ← try getConstInfo name catch _ => throwThe RequestError ⟨.invalidParams, s!"Costante '{name}' non trovata"⟩
+    -- let tyStr ← ppExpr info.type
     let metavarctx := item.tacticInfo.mctxAfter
     withMCtx metavarctx do
       let younger : Name -> Name -> Bool

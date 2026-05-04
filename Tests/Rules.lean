@@ -72,7 +72,12 @@ theorem NotIntro (P : Prop) (h : ¬P) : ¬P := by
   intro p
   apply h p
 
-theorem NotIntro'' (P : Prop) (h : ¬P) : P → False := by
+theorem NotIntro' (P : Prop) (h : ¬P) : P → False := by
+  intro p
+  apply h p
+
+theorem NotIntro'' (A P : Prop) (h : ¬P) (h2: A → P) : A → ¬P := by
+  intro a
   intro p
   apply h p
 
