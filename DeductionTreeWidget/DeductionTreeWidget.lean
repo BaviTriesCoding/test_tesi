@@ -196,22 +196,21 @@ partial def Lean.Expr.toNDTreeM (e : Expr) (hypotheses : List Hyp := []) : MetaM
   -- →I se il binder è una Prop (scarica un'assunzione)
   -- ∀I se il binder è un Type (introduce una variabile)
   | .lam n t b bi =>
-      match (← inferType b) with
-      | .const `False [] =>
-        let tKind ← inferType t
-        let ruleName := if tKind.isProp then "¬I" else "∀I"
-        withLocalDecl n bi t fun fv => do
+      let tKind ← inferType t
+      withLocalDecl n bi t fun fv => do
+        let b := b.instantiate1 fv
+        match (← inferType b) with
+        | .const `False [] =>
+          let ruleName := if tKind.isProp then "¬I" else "∀I"
           let lamType ← ppExpr (Expr.app (Expr.const `Not  []) (← inferType fv))
           -- dbg_trace s!"aggiungo ipotesi: {← ppExpr (fv)} : {← ppExpr t}"
-          let child ← (b.instantiate1 fv).toNDTreeM ([(n, ← fv.toNDTreeM)] ++ hypotheses)
+          let child ← b.toNDTreeM ([(n, ← fv.toNDTreeM)] ++ hypotheses)
           return .node hypotheses s!"{lamType}" s!"{ruleName}" [child]
-      | _ =>
-        let lamType ← ppExpr (← inferType e)
-        let tKind ← inferType t
-        let ruleName := if tKind.isProp then "→I" else "∀I"
-        withLocalDecl n bi t fun fv => do
+        | _ =>
+          let lamType ← ppExpr (← inferType e)
+          let ruleName := if tKind.isProp then "→I" else "∀I"
           -- dbg_trace s!"aggiungo ipotesi: {← ppExpr (fv)} : {← ppExpr t}"
-          let child ← (b.instantiate1 fv).toNDTreeM ([(n,← fv.toNDTreeM)] ++ hypotheses)
+          let child ← b.toNDTreeM ([(n,← fv.toNDTreeM)] ++ hypotheses)
           return .node hypotheses s!"{lamType}" s!"{ruleName}" [child]
   | .proj _ _ e         => return .unhandled s!"{← ppExpr e}" s!"{← ppExpr (← inferType e)}"
   | .forallE _ _ _ _ => throwError ".forallE unexpected in a proof"
