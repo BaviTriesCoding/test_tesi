@@ -322,5 +322,9 @@ TODO:
           doppio e profondo su testa e argomenti
           Nota: per iniziare usa unhandled in tutti i casi in cui i vari orElim etc. non sono
           come li vorresti; più avanti si può pensare a cosa fare nei casi residui
+- o)  [ ] nel caso (ora sono due ma dopo la ristrutturazione del codice sarà 1) di una mvar,
+          recuperare la lista delle ipotesi usando "reprLCtx" e non "hypotheses" perchè possono
+          differire; si vedranno probabilmente cose discrepanze/cose strane (tombstones) e
+          vedremo come gestirle
 ════════════════════════════════════════════════════════════════════
 -/
