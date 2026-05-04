@@ -51,15 +51,14 @@ partial def exprInfo (e : Expr) : MetaM String := do
       let displayName := n.toString
       let bStr ← exprInfo child
       return s!".lam {displayName} : ({tStr}) => ({bStr})"
-  | .forallE n t b bi =>
-    withLocalDecl n bi t fun fv => do
+  | .forallE n t b _ =>
     if e.isArrow then  -- CSC XXX TODO bug, reimplementare, violiamo l'invariante richiesto
       -- non dipendente: ignora il nome del binder
-      return s!".forallE {if isHygienicName n then "⨯" else n.toString} ({← exprInfo t}) → ({← exprInfo b})"
-    let child := (b.instantiate1 fv)
-    let tStr ← exprInfo t
-    let bStr ← exprInfo b
-    return s!"∀ {n} : ({tStr}), ({bStr})"
+      return s!"({← exprInfo t}) → ({← exprInfo b})"
+    else
+      let tStr ← exprInfo t
+      let bStr ← exprInfo b
+      return s!"∀ {n} : ({tStr}), ({bStr})"
   | .letE n t v b nondep   =>
       let tStr ← exprInfo t
       let vStr ← exprInfo v

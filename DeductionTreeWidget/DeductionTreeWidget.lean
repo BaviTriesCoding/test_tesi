@@ -308,5 +308,8 @@ TODO:
 - f₃) [_] ∀ non testato
 - f₄) [✓] nel caso in cui ci siano più →E, vengono messe in una sola riga, ma bisogna renderle più di una.
 - h)  [✓] gestione del caso have (creazione di alberi "separati")
+- i)  [ ] in ExprInfo reimplementare e.isArrow perchè violiamo precondizione
+          di non occorrenza delle bvar e quindi alcuni diventano forall;
+          il bug sembra esserci anche per la resa dei nodi (ma può avere una causa diversa)
 ════════════════════════════════════════════════════════════════════
 -/
