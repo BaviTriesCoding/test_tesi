@@ -33,6 +33,14 @@ theorem impmul (P Q R: Prop) (h: P → Q → R) : P → Q → R := by
 theorem Andleft (P Q : Prop) (h : P ∧ Q) : P := by
  apply And.left h
 
+theorem Andleft1 (P Q : Prop) (h : P ∧ Q) : P := by
+ apply h.1
+
+def mytintro : True := .intro
+
+theorem foo : True := by
+ apply mytintro
+
 theorem Andright (P Q : Prop) (h : P ∧ Q) : Q := by
  apply And.right h
 

@@ -213,18 +213,11 @@ partial def Lean.Expr.toNDTreeM (e : Expr) (hypotheses : List Hyp := []) : MetaM
           -- dbg_trace s!"aggiungo ipotesi: {← ppExpr (fv)} : {← ppExpr t}"
           let child ← (b.instantiate1 fv).toNDTreeM ([(n,← fv.toNDTreeM)] ++ hypotheses)
           return .node hypotheses s!"{lamType}" s!"{ruleName}" [child]
-
-  /-  XXX TODO codice bacato
-  | .forallE n t b bi =>
-      -- CSC: questo caso non può accadere se stiamo processando
-      -- una prova p : T : Prop
-      -- in quanto ∀... : sort_n : Type_m ≠ Prop
-      -- Questo mostra però un problema: il widget dovrebbe provare a rendere
-      -- l'albero sse la costante all'interno della quale siamo è veramente
-      -- una prova, ovvero il tipo del tipo della costante è Prop
-      -- Implementare questo check in getTreeAsJson
-  | .proj _ _ e         => TODO -- CSC: questo può succedere
-  -/
+  | .proj _ _ e         => return .unhandled s!"{← ppExpr e}" s!"{← ppExpr (← inferType e)}"
+  | .forallE _ _ _ _ => throwError ".forallE unexpected in a proof"
+  | .sort _ => throwError ".sort unexpected in a proof"
+  | .bvar _ => throwError ".bvar unexpected in a proof"
+  | .lit _ => throwError ".lit unexpected in a proof"
   | .letE name _ value body _ => do
     return ← (body.instantiate1 value).toNDTreeM ([(name,← value.toNDTreeM)] ++ hypotheses)
   | .mdata _ e          => e.toNDTreeM hypotheses
@@ -233,7 +226,7 @@ partial def Lean.Expr.toNDTreeM (e : Expr) (hypotheses : List Hyp := []) : MetaM
       let isDischarged := ((hypotheses.map fun ⟨n, _⟩ => n).contains decl.userName)
       return .leaf decl.userName (toString (← ppExpr decl.type)) isDischarged
   | .mvar _ => return .openNode hypotheses s!"{← ppExpr (← inferType e)}" -- qui è open
-  | e => return .unhandled s!"{← ppExpr e}" s!"{← ppExpr (← inferType e)}"
+  | .const _ _ => return .unhandled s!"{← ppExpr e}" s!"{← ppExpr (← inferType e)}"
 end
 -- ══════════════════════════════════════════════════════════════════
 -- RPC METHOD: GET TREE AS JSON
@@ -311,5 +304,6 @@ TODO:
 - i)  [ ] in ExprInfo reimplementare e.isArrow perchè violiamo precondizione
           di non occorrenza delle bvar e quindi alcuni diventano forall;
           il bug sembra esserci anche per la resa dei nodi (ma può avere una causa diversa)
+- l)  [ ] gestisci il caso .const (ora unhandled)
 ════════════════════════════════════════════════════════════════════
 -/
