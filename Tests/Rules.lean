@@ -36,6 +36,9 @@ theorem Andleft (P Q : Prop) (h : P ∧ Q) : P := by
 theorem Andright (P Q : Prop) (h : P ∧ Q) : Q := by
  apply And.right h
 
+theorem AndElim (P Q : Prop) (h: P ∧ Q) : Q ∧ P := by
+ and_e h p q
+ constructor <;> assumption
 
 theorem AndIntro (P Q : Prop) (h1 : P) (h2 : Q) : P ∧ Q := by
   apply And.intro
