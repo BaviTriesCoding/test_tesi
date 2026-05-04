@@ -232,15 +232,27 @@ end
 -- RPC METHOD: GET TREE AS JSON
 -- ══════════════════════════════════════════════════════════════════
 
-def reprInfoLCtx (G: LocalContext) : Format :=
- G.decls.foldl
-  (fun s i =>
-    match i with
-    | none => s
-    | some d =>
-       /-s!"{s} {repr d.userName}({repr d.fvarId})"-/
-       s!"{s} {repr d.userName}")
-  .nil
+-- Prints the names of the varsin the LocalContext
+def reprLCtx (G: LocalContext) (verbose := false) : MetaM Format :=
+ G.decls.foldlM
+  (fun s i => do
+    match s, verbose with
+    | .nil, true => return " " -- quick&dirty hack to skip the recursive constant name
+    | _, _ =>
+       match i with
+       | none => return s
+       | some d =>
+          -- s!"{s} {repr d.userName}({repr d.fvarId})"
+          if verbose then
+           let v : MetaM Format :=
+            match d.value? (allowNondep := true) with
+            | .none => return Format.nil
+            | .some v => return ":=" ++ (← ppExpr v)
+           let ty ← ppExpr d.type
+           return s!"{s} ({repr d.userName}:{ty}{← v})"
+          else
+           return s!"{s} {repr d.userName}")
+     .nil
 
 open RequestM in
 @[server_rpc_method]
