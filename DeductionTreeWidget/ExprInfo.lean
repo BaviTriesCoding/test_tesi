@@ -23,6 +23,7 @@ partial def withAggressiveInstantiateMVars (e: Expr) (k: Expr → MetaM α) : Me
     | _ => k e
  | _ => k e
 
+def Lean.Name.subHygName (n : Name) : Name := if (n.toString.contains "_@" || n.toString.contains "_hyg") then "✝".toName else n
 
 partial def exprInfo (e : Expr) : MetaM String := do
   withAggressiveInstantiateMVars e fun e => do
@@ -31,12 +32,12 @@ partial def exprInfo (e : Expr) : MetaM String := do
   | .fvar _ =>
       match (← getLCtx).find? e.fvarId! with
       | some decl =>
-         return s!".fvar {decl.userName}"
+         return s!".fvar {decl.userName.subHygName}"
       | none =>
          return s!".fvar {repr e.fvarId!} UNBOUND"
-  | .mvar id          => return s!".mvar {id.name}"
+  | .mvar id          => return s!".mvar {id.name.subHygName}"
   | .sort lvl         => return s!".sort {lvl}"
-  | .const name us    => return s!".const {name} {us}"
+  | .const name us    => return s!".const {name.subHygName} {us}"
   | .app _ _       =>
     let (fn, args) := e.withApp fun e a => (e, a)
     match fn with
@@ -48,7 +49,7 @@ partial def exprInfo (e : Expr) : MetaM String := do
     withLocalDecl n bi t fun fv => do
       let child := (b.instantiate1 fv)
       let tStr ← exprInfo t
-      let displayName := n.toString
+      let displayName := n.subHygName.toString
       let bStr ← exprInfo child
       return s!".lam {displayName} : ({tStr}) => ({bStr})"
   | .forallE n t b _ =>
@@ -64,13 +65,10 @@ partial def exprInfo (e : Expr) : MetaM String := do
       let vStr ← exprInfo v
       let bStr ← exprInfo b
       if nondep then
-        return s!"have {n} : ({tStr}) := ({vStr}); {bStr}"
-      return s!".let {n} : ({tStr}) := ({vStr}); {bStr}"
+        return s!"have {n.subHygName} : ({tStr}) := ({vStr}); {bStr}"
+      return s!".let {n.subHygName} : ({tStr}) := ({vStr}); {bStr}"
   | .lit (.natVal n)  => return s!"Nat {n}"
   | .lit (.strVal s)  => return s!"Str {s}"
   | .mdata _ e        => exprInfo e
   | .proj tn idx s    =>
       return s!".proj {tn}.{idx} ({← exprInfo s})"
-  where
-    isHygienicName (n : Name) : Bool :=
-      n.toString.contains "_@" || n.toString.contains "_hyg"

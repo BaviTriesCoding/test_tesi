@@ -27,8 +27,12 @@ theorem ImplIntroElim {A P Q R : Prop} (h: P -> Q) (p: A → R → P) (a : A) : 
 
 -- CSC XXX Bug applicazione multipla
 theorem impmul (P Q R: Prop) (h: P → Q → R) : P → Q → R := by
- intro p q
- apply h p q
+  intro p q
+  apply h p q
+
+theorem impmul' (A P Q R: Prop) (h: A → P → Q → R) : A → P → Q → R := by
+  intro a p q
+  apply h a p q
 
 theorem Andleft (P Q : Prop) (h : P ∧ Q) : P := by
  apply And.left h
@@ -36,10 +40,14 @@ theorem Andleft (P Q : Prop) (h : P ∧ Q) : P := by
 theorem Andleft1 (P Q : Prop) (h : P ∧ Q) : P := by
  apply h.1
 
-def mytintro : True := .intro
-
-theorem foo : True := by
- apply mytintro
+def mytintro : A → B → A := by
+  intro a
+  intro b
+  exact a
+/-
+theorem foo' : A → B → A := by
+ apply mytintro -- questo potrebbe essere interessante da controllare
+-/
 
 theorem Andright (P Q : Prop) (h : P ∧ Q) : Q := by
  apply And.right h
@@ -53,6 +61,10 @@ theorem AndIntro (P Q : Prop) (h1 : P) (h2 : Q) : P ∧ Q := by
   . exact h1
   . exact h2
 
+theorem AndCases (A B : Prop) (h: A ∧ B) : B ∧ A := by
+  exact And.casesOn h
+    fun ha hb => And.intro hb ha
+
 theorem OrIntroLeft2 (P Q : Prop) (h : P) : P -> (P ∧ P ∨ Q) ∨ Q := by
   intro x
   apply Or.inl
@@ -65,15 +77,10 @@ theorem OrIntroLeft (P Q : Prop) (h : P) : P ∨ Q := by
 theorem OrIntroRight (P Q: Prop) (h : Q)  : P ∨ Q := by
   apply Or.inr h
 
-theorem OrElim (P Q R : Prop) (h1 : P ∨ Q) (h2 : P → R) (h3 : Q → R) : R := by
-  or_e h1 p q
-  . apply h2 p
-  . apply h3 q
-
-theorem OrElim'  (h1: (A ∧ B) ∨ (C ∧ D)) (h2: A → C) : C := by
-  or_e h1 ab cd
-  . apply h2 (And.left ab)
-  . apply And.left cd
+theorem or_comm' (h : A ∨ B) : B ∨ A := by
+  exact Or.casesOn h
+    (fun ha => Or.inr ha)   -- caso A: costruiamo B ∨ A con inr
+    (fun hb => Or.inl hb)   -- caso B: costruiamo B ∨ A con inl
 
 theorem OrElim''  (h1: (A ∧ B) ∨ C) (h2: A → C) : C := by
   or_e h1 ab c
@@ -89,7 +96,7 @@ theorem NotIntro' (P : Prop) (h : ¬P) : P → False := by
   intro p
   apply h p
 
-theorem NotIntro'' (A P : Prop) (h : ¬P) (h2: A → P) : A → ¬P := by
+theorem NotIntro'' (A P : Prop) (h : ¬P) : A → ¬P := by
   intro a
   intro p
   apply h p
@@ -110,6 +117,13 @@ theorem foo (A B C D : Prop) (h1: (A ∧ B) ∧ (C ∧ D)) : A ∧ C := by
   have a : A := And.left h2
   have c : C := And.left h3
   exact And.intro a c
+
+theorem lal (A B : Prop) (a: A) (b : B) : A ↔ B := by
+  apply Iff.intro
+  . intro
+    exact b
+  . intro
+    exact a
 
 theorem andAnd (A B C : Prop) (h : A ∧ (B ∧ C)) : C := by
   have h1 : B ∧ C := And.right h

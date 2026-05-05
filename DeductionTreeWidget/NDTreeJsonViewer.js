@@ -93,7 +93,10 @@ const Node = ({ hypotheses, formula, rule, children }) => {
     "div",
     {
       style: {
-        display: "flex",
+        // inline-flex: the node shrinks to fit its content.
+        // flex-direction column: width = max(children-row, conclusion).
+        // The bar (width:100%) will therefore be exactly that wide — no more.
+        display: "inline-flex",
         flexDirection: "column",
         alignItems: "center",
         padding: "0 .1rem",
@@ -116,11 +119,12 @@ const Node = ({ hypotheses, formula, rule, children }) => {
       ),
     ),
     // ── Barra + regola ──
+    // width:100% here refers to the inline-flex container's intrinsic width,
+    // i.e. max(children-row, conclusion) — exactly what we want.
     React.createElement(
       "div",
       {
         style: {
-          position: "relative",
           display: "flex",
           flexDirection: "row",
           alignItems: "center",
@@ -343,23 +347,24 @@ export default function NDTreeViewer(props) {
     );
 
   return React.createElement(
+    // Outer container: flex column, all children start from left
     "div",
     {
       style: {
         ...containerStyle,
         display: "flex",
         flexDirection: "column",
-        alignItems: "start",
-        gap: "1rem",
+        alignItems: "stretch",
+        gap: "0.5rem",
         padding: "0.5rem",
       },
     },
-    // Header: nome e tipo del teorema
+
+    // ── Header: nome e tipo del teorema ──
     React.createElement(
       "div",
       {
         style: {
-          width: "100%",
           display: "flex",
           alignItems: "center",
           gap: "1rem",
@@ -376,24 +381,41 @@ export default function NDTreeViewer(props) {
         result.type,
       ),
     ),
-    // Corpo: HypothesesDisplay + albero
+
+    // ── Context wraps both the hypothesis bar and the tree ──
+    // HypothesesDisplay sits OUTSIDE the scrollable tree area,
+    // but both share the same context so clicks still propagate.
     React.createElement(
-      "div",
-      {
-        style: {
-          display: "flex",
-          flexDirection: "column",
-          overflowX: "auto",
-          gap: "0.5rem",
-          width: "100%",
-          outline: `1px solid ${LIGHT_GRAY}`,
-        },
-      },
+      HypothesesContext.Provider,
+      { value: { sharedHypotheses, setHypotheses } },
+
+      // Hypothesis display — fixed above, never scrolls with the tree
+      React.createElement(HypothesesDisplay, null),
+
+      // Tree scroll container
+      // overflow:auto + inline-block trick: the scroll container
+      // grows only as wide as the tree needs, so it never pushes
+      // content off the left edge.
       React.createElement(
-        HypothesesContext.Provider,
-        { value: { sharedHypotheses, setHypotheses } },
-        React.createElement(HypothesesDisplay, null),
-        React.createElement(NDTree, { tree: result.tree }),
+        "div",
+        {
+          style: {
+            overflowX: "auto",
+            outline: `1px solid ${LIGHT_GRAY}`,
+            padding: "0.5rem",
+            // "inline-block" makes the container hug the tree width;
+            // combined with overflow:auto this gives a left-anchored
+            // scrollable region that does not exceed the panel width.
+            display: "block",
+          },
+        },
+        // Wrap NDTree in a div that is inline-flex so the tree node
+        // starts from the left and is never stretched to full width.
+        React.createElement(
+          "div",
+          { style: { display: "inline-flex" } },
+          React.createElement(NDTree, { tree: result.tree }),
+        ),
       ),
     ),
   );
