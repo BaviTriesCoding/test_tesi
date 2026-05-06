@@ -43,8 +43,12 @@ const buttonStyle = {
 // ──────────────────────────────────────────────────────────────────
 
 const HypothesesContext = createContext({
-  hypotheses: [],
+  sharedHypotheses: [],
   setHypotheses: () => {},
+  selectedTree: null,
+  setSelectedTree: () => {},
+  selectedHypIdx: null,
+  setSelectedHypIdx: () => {},
 });
 
 // ──────────────────────────────────────────────────────────────────
@@ -71,8 +75,13 @@ const Leaf = ({ name, formula, isDischarged }) => {
   );
 };
 
-const Node = ({ hypotheses, formula, rule, children }) => {
-  const { sharedHypotheses, setHypotheses } = useContext(HypothesesContext);
+const Node = ({ hypotheses, formula, rule, children, disableClick }) => {
+  const {
+    sharedHypotheses,
+    setHypotheses,
+    setSelectedTree,
+    setSelectedHypIdx,
+  } = useContext(HypothesesContext);
   const [selected, setSelected] = useState(false);
 
   useEffect(() => {
@@ -85,6 +94,7 @@ const Node = ({ hypotheses, formula, rule, children }) => {
     setSelected((prev) => {
       const newSelected = !prev;
       setHypotheses(newSelected ? (hypotheses ?? []) : []);
+      setSelectedHypIdx(null);
       return newSelected;
     });
   };
@@ -115,7 +125,11 @@ const Node = ({ hypotheses, formula, rule, children }) => {
         },
       },
       children.map((child, i) =>
-        React.createElement(NDTree, { key: i, tree: child }),
+        React.createElement(NDTree, {
+          key: i,
+          tree: child,
+          disableClick: disableClick,
+        }),
       ),
     ),
     // ── Barra + regola ──
@@ -167,15 +181,20 @@ const Node = ({ hypotheses, formula, rule, children }) => {
           whiteSpace: "nowrap",
           marginTop: "0.1rem",
         },
-        onClick: handleClick,
+        onClick: !disableClick && handleClick,
       },
       formula,
     ),
   );
 };
 
-const OpenNode = ({ hypotheses, formula }) => {
-  const { sharedHypotheses, setHypotheses } = useContext(HypothesesContext);
+const OpenNode = ({ hypotheses, formula, disableClick }) => {
+  const {
+    sharedHypotheses,
+    setHypotheses,
+    setSelectedTree,
+    setSelectedHypIdx,
+  } = useContext(HypothesesContext);
   const [selected, setSelected] = useState(false);
 
   useEffect(() => {
@@ -188,6 +207,7 @@ const OpenNode = ({ hypotheses, formula }) => {
     setSelected((prev) => {
       const newSelected = !prev;
       setHypotheses(newSelected ? (hypotheses ?? []) : []);
+      setSelectedHypIdx(null);
       return newSelected;
     });
   };
@@ -214,7 +234,7 @@ const OpenNode = ({ hypotheses, formula }) => {
           cursor: "pointer",
           whiteSpace: "nowrap",
         },
-        onClick: handleClick,
+        onClick: !disableClick && handleClick,
       },
       formula,
     ),
@@ -224,17 +244,73 @@ const OpenNode = ({ hypotheses, formula }) => {
 const Unhandled = (json) =>
   React.createElement("div", { style: { color: "red" } }, "unhandled");
 
-const NDTree = ({ tree }) => {
+const NDTree = ({ tree, disableClick }) => {
   switch (tree.type) {
     case "leaf":
       return React.createElement(Leaf, { ...tree });
     case "node":
-      return React.createElement(Node, { ...tree });
+      return React.createElement(Node, { ...tree, disableClick: disableClick });
     case "openNode":
-      return React.createElement(OpenNode, { ...tree });
+      return React.createElement(OpenNode, {
+        ...tree,
+        disableClick: disableClick,
+      });
     default:
       return React.createElement(Unhandled, tree.stringify?.() ?? "unhandled");
   }
+};
+
+// ──────────────────────────────────────────────────────────────────
+// SelectedTreeViewer — mostra il sottoalbero del nodo cliccato
+// ──────────────────────────────────────────────────────────────────
+
+const SelectedTreeViewer = () => {
+  const { selectedTree } = useContext(HypothesesContext);
+
+  if (!selectedTree) return null;
+
+  return React.createElement(
+    "div",
+    {
+      style: {
+        display: "flex",
+        flexDirection: "column",
+        gap: "0.25rem",
+      },
+    },
+    // header
+    React.createElement(
+      "span",
+      {
+        style: {
+          color: LIGHTER_GRAY,
+          fontSize: "10px",
+          userSelect: "none",
+          letterSpacing: "0.05em",
+          textTransform: "uppercase",
+        },
+      },
+      "Sottoalbero",
+    ),
+    // scrollable tree
+    React.createElement(
+      "div",
+      {
+        style: {
+          overflowX: "auto",
+          outline: `1px solid ${PRIMARY}`,
+          padding: "0.5rem",
+          display: "block",
+          borderRadius: "2px",
+        },
+      },
+      React.createElement(
+        "div",
+        { style: { display: "inline-flex" } },
+        React.createElement(NDTree, { tree: selectedTree }),
+      ),
+    ),
+  );
 };
 
 // ──────────────────────────────────────────────────────────────────
@@ -242,7 +318,23 @@ const NDTree = ({ tree }) => {
 // ──────────────────────────────────────────────────────────────────
 
 const HypothesesDisplay = () => {
-  const { sharedHypotheses } = useContext(HypothesesContext);
+  const {
+    sharedHypotheses,
+    selectedHypIdx,
+    setSelectedHypIdx,
+    setSelectedTree,
+  } = useContext(HypothesesContext);
+
+  const handleHypClick = (hyp, i) => {
+    if (selectedHypIdx === i) {
+      // deselect
+      setSelectedHypIdx(null);
+      setSelectedTree(null);
+    } else {
+      setSelectedHypIdx(i);
+      setSelectedTree(hyp.value);
+    }
+  };
 
   return React.createElement(
     "div",
@@ -275,13 +367,16 @@ const HypothesesDisplay = () => {
             "span",
             {
               key: i,
+              onClick: () => handleHypClick(hyp, i),
               style: {
-                background: LIGHT_GRAY,
-                border: `1px solid ${PRIMARY}`,
+                background: selectedHypIdx === i ? PRIMARY : LIGHT_GRAY,
+                border: `1px solid ${selectedHypIdx === i ? LIGHT_PRIMARY : PRIMARY}`,
                 borderRadius: "3px",
                 padding: "2px 6px",
                 color: WHITE,
                 whiteSpace: "nowrap",
+                cursor: "pointer",
+                userSelect: "none",
               },
             },
             React.createElement(Leaf, {
@@ -304,6 +399,8 @@ export default function NDTreeViewer(props) {
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
   const [sharedHypotheses, setHypotheses] = useState([]);
+  const [selectedTree, setSelectedTree] = useState(null);
+  const [selectedHypIdx, setSelectedHypIdx] = useState(null);
 
   useEffect(() => {
     const pos = props.pos;
@@ -320,6 +417,8 @@ export default function NDTreeViewer(props) {
           treeJson: res.treeJson,
         });
         setHypotheses([]); // reset al cambio di teorema
+        setSelectedTree(null);
+        setSelectedHypIdx(null);
       })
       .catch((e) => setError(e.message ?? "Errore RPC sconosciuto"));
     console.log("Fetching NDTree for position", pos);
@@ -387,7 +486,22 @@ export default function NDTreeViewer(props) {
     // but both share the same context so clicks still propagate.
     React.createElement(
       HypothesesContext.Provider,
-      { value: { sharedHypotheses, setHypotheses } },
+      {
+        value: {
+          sharedHypotheses,
+          setHypotheses,
+          selectedTree,
+          setSelectedTree,
+          selectedHypIdx,
+          setSelectedHypIdx,
+        },
+      },
+
+      // Sub-tree of the selected node — visible only when something is selected
+      React.createElement(SelectedTreeViewer, {
+        tree: null,
+        disableClick: true,
+      }),
 
       // Hypothesis display — fixed above, never scrolls with the tree
       React.createElement(HypothesesDisplay, null),
@@ -414,7 +528,10 @@ export default function NDTreeViewer(props) {
         React.createElement(
           "div",
           { style: { display: "inline-flex" } },
-          React.createElement(NDTree, { tree: result.tree }),
+          React.createElement(NDTree, {
+            tree: result.tree,
+            disableClick: false,
+          }),
         ),
       ),
     ),

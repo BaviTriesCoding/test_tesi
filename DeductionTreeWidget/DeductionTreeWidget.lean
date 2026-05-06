@@ -104,9 +104,9 @@ partial def getHypoteses (G: LocalContext) : MetaM (List Hyp) := do
             let ty ← ppExpr d.type
             return s ++ [.some (d.userName.subHygName, .leaf d.userName.subHygName s!"{ty}" false)]
           | some v => do
-            let ty ← ppExpr d.type
-            return s ++ [.some (d.userName.subHygName, .leaf d.userName.subHygName s!"{ty}" false)])
-          -- return s ++ [.some (d.userName.subHygName, ← v.toNDTreeM (withHyp := false))])
+            return s ++ [.some (d.userName.subHygName, ← v.toNDTreeM (withHyp := false))])
+            -- let ty ← ppExpr d.type
+            --return s ++ [.some (d.userName.subHygName, .leaf d.userName.subHygName s!"{ty}" false)])
     []
 
   return list.filterMap id
@@ -146,97 +146,97 @@ partial def Lean.Expr.toNDTreeM (e : Expr) (withHyp := true) : MetaM NDTree := d
   | (.letE n t v b _), [] => do
     withLetDecl n.subHygName t v fun fv =>
       let b' := b.instantiate1 fv
-      return ← b'.toNDTreeM
+      return ← b'.toNDTreeM (withHyp := withHyp)
   | (.lam n t b bi), [] => do
     withLocalDecl n.subHygName bi t fun fv => do
       let b := b.instantiate1 fv
       let ruleName := if (← inferType t).isProp then "→I" else "∀I"
-      let child ← b.toNDTreeM
+      let child ← b.toNDTreeM (withHyp := withHyp)
       return .node hyps s!"{← ppExpr (← inferType fn)}" ruleName [child]
   | (.fvar fid), arg::l => do
     -- nodo base: rappresenta (fvar arg)
     let baseApp  := .app (.fvar fid) arg
-    let baseNode := .node hyps s!"{← ppExpr (← inferType baseApp)}" "→E" [(← fn.toNDTreeM), (← arg.toNDTreeM)]
+    let baseNode := .node hyps s!"{← ppExpr (← inferType baseApp)}" "→E" [(← fn.toNDTreeM (withHyp := withHyp)), (← arg.toNDTreeM (withHyp := withHyp))]
     -- fold: accumulatore = (expr corrente, nodo corrente)
     let (_, finalNode) ← l.foldlM (
       fun (accApp, accNode) nextArg => do
       let newApp  := .app accApp nextArg
-      let newNode := .node hyps s!"{← ppExpr (← inferType newApp)}" "→E" [accNode, (← nextArg.toNDTreeM)]
+      let newNode := .node hyps s!"{← ppExpr (← inferType newApp)}" "→E" [accNode, (← nextArg.toNDTreeM (withHyp := withHyp))]
       return (newApp, newNode)
     ) (baseApp, baseNode)
     return finalNode
 
   | (.const `And.intro _), arg0::arg1::_ =>
-    return .node hyps formula "∧I" [← arg0.toNDTreeM, ← arg1.toNDTreeM]
+    return .node hyps formula "∧I" [← arg0.toNDTreeM (withHyp := withHyp), ← arg1.toNDTreeM (withHyp := withHyp)]
 
   | (.const `And.casesOn _), _::andArg::(.lam n t (.lam n' t' b bi') bi)::_ => do
     withLocalDecl n.subHygName bi t fun fv => do
       let b' := b.instantiate1 fv
       withLocalDecl n'.subHygName bi' t' fun fv' => do
         let b'' := b'.instantiate1 fv'
-        return .node hyps formula "∧E" [← andArg.toNDTreeM, ← b''.toNDTreeM]
+        return .node hyps formula "∧E" [← andArg.toNDTreeM (withHyp := withHyp), ← b''.toNDTreeM (withHyp := withHyp)]
   | (.const `And.casesOn _), _::andArg::(.lam n t b bi)::_ => do
     withLocalDecl n.subHygName bi t fun fv => do
       let b' := b.instantiate1 fv
-      return .node hyps formula "∧E" [← andArg.toNDTreeM, ← b'.toNDTreeM]
+      return .node hyps formula "∧E" [← andArg.toNDTreeM (withHyp := withHyp), ← b'.toNDTreeM (withHyp := withHyp)]
   | (.const `And.casesOn _), _::andArg::arg0::_ => do
-    return .node hyps formula "∧E" [← andArg.toNDTreeM, ← arg0.toNDTreeM]
+    return .node hyps formula "∧E" [← andArg.toNDTreeM (withHyp := withHyp), ← arg0.toNDTreeM (withHyp := withHyp)]
   | (.const `And.left _), arg::_ =>
-    return .node hyps formula "∧E₁" [← arg.toNDTreeM]
+    return .node hyps formula "∧E₁" [← arg.toNDTreeM (withHyp := withHyp)]
   | (.const `And.right _), arg::_ =>
-    return .node hyps formula "∧E₂" [← arg.toNDTreeM]
+    return .node hyps formula "∧E₂" [← arg.toNDTreeM (withHyp := withHyp)]
   | (.const `Or.inl _), arg::_ =>
-    return .node hyps formula "∨I₁" [← arg.toNDTreeM]
+    return .node hyps formula "∨I₁" [← arg.toNDTreeM (withHyp := withHyp)]
   | (.const `Or.inr _), arg::_ =>
-    return .node hyps formula "∨I₂" [← arg.toNDTreeM]
+    return .node hyps formula "∨I₂" [← arg.toNDTreeM (withHyp := withHyp)]
   | (.const `Or.casesOn _), _::orArg::(.lam nl tl bl bil)::(.lam nr tr br bir)::_ => do
     let childL ← withLocalDecl nl.subHygName bil tl fun fvl => do
       let bl' := bl.instantiate1 fvl
-      bl'.toNDTreeM
+      bl'.toNDTreeM (withHyp := withHyp)
     let childR ← withLocalDecl nr.subHygName bir tr fun fvr => do
       let br' := br.instantiate1 fvr
-      br'.toNDTreeM
-    return .node hyps formula "∨E" [← orArg.toNDTreeM, childL, childR]
+      br'.toNDTreeM (withHyp := withHyp)
+    return .node hyps formula "∨E" [← orArg.toNDTreeM (withHyp := withHyp), childL, childR]
   | (.const `Or.casesOn _), _::orArg::arg0::(.lam nr tr br bir)::_ => do
     let childR ← withLocalDecl nr.subHygName bir tr fun fvr => do
       let br' := br.instantiate1 fvr
-      br'.toNDTreeM
-    return .node hyps formula "∨E" [← orArg.toNDTreeM, ← arg0.toNDTreeM, childR]
+      br'.toNDTreeM (withHyp := withHyp)
+    return .node hyps formula "∨E" [← orArg.toNDTreeM (withHyp := withHyp), ← arg0.toNDTreeM (withHyp := withHyp), childR]
   | (.const `Or.casesOn _), _::orArg::(.lam nl tl bl bil)::arg1::_ => do
     let childL ← withLocalDecl nl.subHygName bil tl fun fvl => do
       let bl' := bl.instantiate1 fvl
-      bl'.toNDTreeM
-    return .node hyps formula "∨E" [← orArg.toNDTreeM, childL, ← arg1.toNDTreeM]
+      bl'.toNDTreeM (withHyp := withHyp)
+    return .node hyps formula "∨E" [← orArg.toNDTreeM (withHyp := withHyp), childL, ← arg1.toNDTreeM (withHyp := withHyp)]
   | (.const `Not.intro _), arg::_ =>
-    return .node hyps formula "¬I" [← arg.toNDTreeM]
+    return .node hyps formula "¬I" [← arg.toNDTreeM (withHyp := withHyp)]
   | (.const `absurd _), arg0::arg1::_ =>
-    return .node hyps formula "¬E" [← arg0.toNDTreeM, ← arg1.toNDTreeM]
+    return .node hyps formula "¬E" [← arg0.toNDTreeM (withHyp := withHyp), ← arg1.toNDTreeM (withHyp := withHyp)]
   | (.const `False.elim _), arg::_ =>
-    return .node hyps formula "⊥E" [← arg.toNDTreeM]
+    return .node hyps formula "⊥E" [← arg.toNDTreeM (withHyp := withHyp)]
   | (.const `Exists.intro _), arg::_ =>
-    return .node hyps formula "∃I" [← arg.toNDTreeM]
+    return .node hyps formula "∃I" [← arg.toNDTreeM (withHyp := withHyp)]
   | (.const `Exists.elim _), arg0::arg1::_ =>
-    return .node hyps formula "∃E" [← arg0.toNDTreeM, ← arg1.toNDTreeM]
+    return .node hyps formula "∃E" [← arg0.toNDTreeM (withHyp := withHyp), ← arg1.toNDTreeM (withHyp := withHyp)]
   | (.const `Iff.intro _), (.lam nl tl bl bil)::(.lam nr tr br bir)::_ => do
     let childL ← withLocalDecl nl.subHygName bil tl fun fvl => do
       let bl' := bl.instantiate1 fvl
-      bl'.toNDTreeM
+      bl'.toNDTreeM (withHyp := withHyp)
     let childR ← withLocalDecl nr.subHygName bir tr fun fvr => do
       let br' := br.instantiate1 fvr
-      br'.toNDTreeM
+      br'.toNDTreeM (withHyp := withHyp)
     return .node hyps formula "↔I" [childL, childR]
   | (.const `Iff.intro _), arg0::(.lam nr tr br bir)::_ => do
     let childR ← withLocalDecl nr.subHygName bir tr fun fvr => do
       let br' := br.instantiate1 fvr
-      br'.toNDTreeM
-    return .node hyps formula "↔I" [← arg0.toNDTreeM, childR]
+      br'.toNDTreeM (withHyp := withHyp)
+    return .node hyps formula "↔I" [← arg0.toNDTreeM (withHyp := withHyp), childR]
   | (.const `Iff.intro _), (.lam nl tl bl bil)::arg1::_ => do
     let childL ← withLocalDecl nl.subHygName bil tl fun fvl => do
       let bl' := bl.instantiate1 fvl
-      bl'.toNDTreeM
-    return .node hyps formula "↔I" [childL, ← arg1.toNDTreeM]
+      bl'.toNDTreeM (withHyp := withHyp)
+    return .node hyps formula "↔I" [childL, ← arg1.toNDTreeM (withHyp := withHyp)]
   | fn, args => do
-      let children ← args.mapM fun arg =>  arg.toNDTreeM
+      let children ← args.mapM fun arg =>  arg.toNDTreeM (withHyp := withHyp)
       return .node hyps formula s!"{← ppExpr fn}" (children)
 
 end
@@ -286,8 +286,7 @@ def getTreeAsJson (params : DeductionAtCursorParams) :
       -- dbg_trace s!"La mvar si chiama {mmmid.name}"
       mmmid.withContext do
         if !(← inferType (← inferType proofTerm)).isProp then throwError s!"Il termine trovato non è una prova: {← exprInfo proofTerm} : {← ppExpr (← inferType proofTerm)}"
-        let tree := (← proofTerm.toNDTreeM).toJson
-        dbg_trace s!"{tree}"
+        let tree := (← proofTerm.toNDTreeM (withHyp := true)).toJson
         -- dbg_trace s!"Found proof term for {name}: {← exprInf proofTerm}"
         -- dbg_trace s!"Found proof term for {name}:= {← exprInf proofTerm} : {← ppExpr (← inferType proofTerm)} == {tyStr}"
         return { thmName := toString name, thmType := s!"{← reprLCtx (← getLCtx)} ⊢ {← ppExpr (← inferType proofTerm)}", treeJson := s!"{tree}" }

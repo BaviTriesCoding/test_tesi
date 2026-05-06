@@ -113,9 +113,8 @@ theorem funzionera (P:Prop) (h1: ¬P → P) (h2: ¬P) : P := by
 
 theorem foo (A B C D : Prop) (h1: (A ∧ B) ∧ (C ∧ D)) : A ∧ C := by
   have h2 : A ∧ B := And.left h1
-  have h3 : C ∧ D := And.right h1
   have a : A := And.left h2
-  have c : C := And.left h3
+  have c : C := And.left (And.right h1)
   exact And.intro a c
 
 theorem lal (A B : Prop) (a: A) (b : B) : A ↔ B := by
@@ -129,8 +128,6 @@ theorem andAnd (A B C : Prop) (h : A ∧ (B ∧ C)) : C := by
   have h1 : B ∧ C := And.right h
   have c : C := And.right h1
   exact c
-
-
 
 -- Per disattivare il widget in una sezione:
 show_panel_widgets [- NDTreeJsonViewerWidget]
