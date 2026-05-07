@@ -114,8 +114,8 @@ theorem funzionera (P:Prop) (h1: ¬P → P) (h2: ¬P) : P := by
 theorem foo (A B C D : Prop) (h1: (A ∧ B) ∧ (C ∧ D)) : A ∧ C := by
   have h2 : A ∧ B := And.left h1
   have a : A := And.left h2
-  have c : C := And.left (And.right h1)
-  exact And.intro a c
+  have h1 : C := And.left (And.right h1)
+  exact And.intro a h1
 
 theorem lal (A B : Prop) (a: A) (b : B) : A ↔ B := by
   apply Iff.intro

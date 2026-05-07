@@ -12,23 +12,50 @@ abbrev isDischarged := Bool --Il booleano è per capire se è una foglia aperta 
 abbrev Proof := String -- Nei nodi unhandled è la prova non riconosciuta
 
 inductive NDTree where
-  | leaf      : List (Name × NDTree × isDischarged) → Name → Formula → isDischarged → NDTree                        -- .fvar
-  | node      : List (Name × NDTree × isDischarged) → Formula → Rule → List NDTree → NDTree  -- .mvar
-  | openNode  : List (Name × NDTree × isDischarged) → Formula → NDTree
+  | leaf      : List (Name × NDTree) → Name → Formula → isDischarged → NDTree                        -- .fvar
+  | node      : List (Name × NDTree) → Formula → Rule → List NDTree → NDTree  -- .mvar
+  | openNode  : List (Name × NDTree) → Formula → NDTree
   | unhandled : Proof → Formula → NDTree                        -- Per rappresentare i nodi che non siamo ancora in grado di gestire
-  deriving FromJson, ToJson, Server.RpcEncodable
+  deriving FromJson, ToJson, Server.RpcEncodable, BEq
 
-abbrev Hyp := (Name × NDTree × isDischarged)
+def NDTree.isLeaf (e : NDTree) : Bool :=
+  match e with
+  | .leaf _ _ _ _ => true
+  | _ => false
+
+def NDTree.isNode (e : NDTree) : Bool :=
+  match e with
+  | .node _ _ _ _ => true
+  | _ => false
+
+def NDTree.isOpenNode (e : NDTree) : Bool :=
+  match e with
+  | .openNode _ _ => true
+  | _ => false
+
+def NDTree.isUnhandled (e : NDTree) : Bool :=
+  match e with
+  | .unhandled _ _ => true
+  | _ => false
+
+/-instance : BEq NDTree where
+  beq a b :=
+    match a, b with
+    | .leaf _ nl fl _, .leaf _ nr fr _ => nl == nr && fl == fr
+    | .node _ fl rl ll, .node _ fr rr lr => fl == fr && rl == rr && ll == lr
+    | .openNode _ _ , .openNode _ _ => true
+    | _, _ => false-/
+
+abbrev Hyp := (Name × NDTree)
 
 partial def NDTree.toJson : NDTree → String
   | .leaf hypotheses name f isDischarged =>
     "{
       \"type\":\"leaf\",
-      \"hypotheses\": [" ++ ", ".intercalate (hypotheses.map fun ⟨name, value, isDischarged⟩ =>
+      \"hypotheses\": [" ++ ", ".intercalate (hypotheses.map fun ⟨name, value⟩ =>
       "{
         \"name\":\"" ++ name.toString ++ "\",
-        \"value\":" ++ value.toJson ++ ",
-        \"isDischarged\":" ++ s!"{repr isDischarged}" ++ "
+        \"value\":" ++ value.toJson ++ "
       }") ++ "],
       \"name\":\"" ++ name.toString ++ "\",
       \"formula\":\""++ f ++"\",
@@ -37,11 +64,10 @@ partial def NDTree.toJson : NDTree → String
   | .node hypotheses f rule children =>
     "{
       \"type\":\"node\",
-      \"hypotheses\": [" ++ ", ".intercalate (hypotheses.map fun ⟨name, value, isDischarged⟩ =>
+      \"hypotheses\": [" ++ ", ".intercalate (hypotheses.map fun ⟨name, value⟩ =>
       "{
         \"name\":\"" ++ name.toString ++ "\",
-        \"value\":" ++ value.toJson ++ ",
-        \"isDischarged\":" ++ s!"{repr isDischarged}" ++ "
+        \"value\":" ++ value.toJson ++ "
       }") ++ "],
       \"formula\":\"" ++ f ++ "\",
       \"rule\": \"" ++ rule ++ "\",
@@ -50,11 +76,10 @@ partial def NDTree.toJson : NDTree → String
   | .openNode hypotheses f =>
     "{
       \"type\":\"openNode\",
-      \"hypotheses\": [" ++ ", ".intercalate (hypotheses.map fun ⟨name, value, isDischarged⟩ =>
+      \"hypotheses\": [" ++ ", ".intercalate (hypotheses.map fun ⟨name, value⟩ =>
       "{
         \"name\":\"" ++ name.toString ++ "\",
-        \"value\":" ++ value.toJson ++ ",
-        \"isDischarged\":" ++ s!"{repr isDischarged}" ++ "
+        \"value\":" ++ value.toJson ++ "
       }") ++ "],
       \"formula\":\"" ++ f ++ "\"
     }"
@@ -68,42 +93,27 @@ partial def NDTree.toJson : NDTree → String
 partial def NDTree.toString (tree : NDTree) : String := tree.toJson
 
 def Hyp.toString (h : Hyp) : String :=
-  let (name, tree, isDischarged) := h
-  s!"{if isDischarged then "[" else ""}{name} : {tree.toString}{if isDischarged then "]" else ""}"
--- ══════════════════════════════════════════════════════════════════
--- RPC PARAMS & RESULT
--- ══════════════════════════════════════════════════════════════════
-
-structure DeductionAtCursorParams where
-  pos : Lsp.Position
-  deriving FromJson, ToJson
-
-structure DeductionAtCursorResult where
-  thmName  : String
-  thmType  : String
-  deriving FromJson, ToJson, Server.RpcEncodable
-
-structure TreeAsJsonResult where
-  thmName : String
-  thmType : String
-  treeJson : String
-  deriving FromJson, ToJson, Server.RpcEncodable
+  let (name, tree) := h
+  s!"{name} : {tree.toString}"
 
 
--- ══════════════════════════════════════════════════════════════════
--- MAPPING NOMI REGOLE ND
--- ══════════════════════════════════════════════════════════════════
-def isNameInHyps (n : Name) (hyps : List Hyp) : Bool :=
-  hyps.foldl (fun s (name, _, _) =>
-    if !s then
-      s || n == name
-    else
-      s
-  ) false
+def isTreeDischarged (t : NDTree) (rootHyps : List Hyp) : Bool :=
+  match t with
+  | .leaf hyps name formula _ =>
+    let hyps' := hyps.filter (fun x => !rootHyps.contains x)
+    hyps'.foldl (fun res (name', value) =>
+      match value, res with
+      | _, true => true
+      | .leaf _ _ formula' _ , false =>
+        name == name' && formula == formula'
+      | _, _ => false
+    ) false
+  | _ => false
+
 
 mutual
 
-partial def getHypoteses (G: LocalContext) (rootHyps : List Hyp := []) (setUndischarged := false) : MetaM (List Hyp) := do
+partial def getHypoteses (G: LocalContext) (rootHyps : List Hyp := []) (isLHS : Bool := false) : MetaM (List Hyp) := do
   let list ← G.decls.foldlM (fun s i => do
     match s with
     | [] => return [.none]
@@ -111,14 +121,21 @@ partial def getHypoteses (G: LocalContext) (rootHyps : List Hyp := []) (setUndis
        match i with
        | none => return s
        | some d =>
-          if (← inferType (Expr.fvar d.fvarId)).isProp then
+          let t := (← inferType (.fvar d.fvarId))
+          if t.isSort then
             return s
-          let isDisch := if setUndischarged then false else (!isNameInHyps d.userName rootHyps)
-          match d.value? with
+          match d.value? (allowNondep := true) with
           | none => do
-            return s ++ [.some (d.userName, (← (Expr.fvar d.fvarId).toNDTreeM (withHyp := false) (rootHyps := rootHyps)) ,isDisch)]
+            let leaf :NDTree := .leaf [] d.userName s!"{← ppExpr t}" (!isLHS && !(← rootHyps.foldlM (fun res h =>
+              match res, h with
+              | true, _ => return true
+              | false, (name, .leaf _ _ f _) => return  name == d.userName && f == s!"{← ppExpr t}"
+              | _, _ => return false
+            ) false ))
+            return s ++ [.some (d.userName, leaf)]
+            -- return s ++ [.some (d.userName, (← (Expr.fvar d.fvarId).toNDTreeM (withHyp := false) (rootHyps := rootHyps)))]
           | some v => do
-            return s ++ [.some (d.userName, (← v.toNDTreeM (withHyp := false) (rootHyps := rootHyps)), isDisch)])
+            return s ++ [.some (d.userName, (← v.toNDTreeM (withHyp := false) (rootHyps := rootHyps)))])
     []
 
   return list.filterMap id
@@ -127,7 +144,7 @@ partial def getHypoteses (G: LocalContext) (rootHyps : List Hyp := []) (setUndis
 partial def Lean.Expr.toNDTreeM (e : Expr) (withHyp := true) (rootHyps : List Hyp := []) : MetaM NDTree := do
   withAggressiveInstantiateMVars e fun e => do
   let (fn, args') := e.withApp fun e a => (e, a.toList)
-  let args ← args'.filterMapM (fun arg => do if (← inferType arg).isProp then return none else return some arg)
+  let args ← args'.filterMapM (fun arg => do if (← inferType arg).isSort then return none else return some arg)
   /- -- debug purpose
   let fnPrintable := ← exprInfo fn
   let mut argsPrintable : List String := []
@@ -144,11 +161,11 @@ partial def Lean.Expr.toNDTreeM (e : Expr) (withHyp := true) (rootHyps : List Hy
   | (.sort _), []            => throwError ".sort unexpected in a proof"
   | (.lit _), []             => throwError ".lit unexpected in a proof"
   -- ↓ foglie ↓
-  | (.const n _), [] => return .leaf hyps n.subHygName formula (!isNameInHyps n rootHyps)
+  | (.const n _), [] => return .leaf hyps n.subHygName formula ( isTreeDischarged (.leaf hyps n formula false) rootHyps)
   | (.fvar id), [] => do
       let decl ← Meta.getFVarLocalDecl (.fvar id)
       -- let isDischarged := ((hypotheses.map fun ⟨n, _⟩ => n).contains decl.userName) -- utilizzando le decls, non è chiaro come dovrei distinguerle
-      return .leaf hyps decl.userName.subHygName (toString (← ppExpr decl.type)) (!isNameInHyps decl.userName rootHyps)
+      return .leaf hyps decl.userName.subHygName (toString (← ppExpr decl.type)) ( isTreeDischarged (.leaf hyps decl.userName (toString (← ppExpr decl.type)) false) rootHyps)
   | (.const ``sorryAx _), _ => return .leaf hyps `sorryAx "sorry" false
   -- ↓ nodi aperti ↓
   | (.mvar mmmid), [] => do
@@ -261,8 +278,8 @@ end
 def reprLCtx (hyps : List Hyp) : MetaM String := do
   return ", ".intercalate (hyps.map fun hyp =>
     match hyp with
-    | (n, .leaf _ _ f _, isDischarged) => s!"{if isDischarged then "[" else ""}{n} : {f}{if isDischarged then "]" else ""}"
-    | (n, .node _ f _ _, isDischarged) => s!"{if isDischarged then "[" else ""}{n} : {f}{if isDischarged then "]" else ""}"
+    | (n, .leaf _ _ f _) => s!"{n} : {f}"
+    | (n, .node _ f _ _) => s!"{n} : {f}"
     | _ => ""
   )
 
@@ -272,6 +289,25 @@ open Lean Server RequestM in
 def debugLog (msg : String) : RequestM (RequestTask String) := do
   dbg_trace "[DEBUG] {msg}"
   asTask do return s!"Logged: {msg}"
+
+-- ══════════════════════════════════════════════════════════════════
+-- RPC PARAMS & RESULT
+-- ══════════════════════════════════════════════════════════════════
+
+structure DeductionAtCursorParams where
+  pos : Lsp.Position
+  deriving FromJson, ToJson
+
+structure DeductionAtCursorResult where
+  thmName  : String
+  thmType  : String
+  deriving FromJson, ToJson, Server.RpcEncodable
+
+structure TreeAsJsonResult where
+  thmName : String
+  thmType : String
+  treeJson : String
+  deriving FromJson, ToJson, Server.RpcEncodable
 
 
 open RequestM in
@@ -303,8 +339,8 @@ def getTreeAsJson (params : DeductionAtCursorParams) :
       /- -/
       -- dbg_trace s!"La mvar si chiama {mmmid.name}"
       mmmid.withContext do
-        if !(← inferType (← inferType proofTerm)).isProp then throwError s!"Il termine trovato non è una prova: {← exprInfo proofTerm} : {← ppExpr (← inferType proofTerm)}"
-        let rootHyps ← getHypoteses (← getLCtx) (setUndischarged := true)
+        if !(← inferType (← inferType proofTerm)).isSort then throwError s!"Il termine trovato non è una prova: {← exprInfo proofTerm} : {← ppExpr (← inferType proofTerm)}"
+        let rootHyps ← getHypoteses (← getLCtx) (isLHS := true)
         let tree ← (proofTerm.toNDTreeM (rootHyps := rootHyps))
         -- dbg_trace s!"Found proof term for {name}: {← exprInf proofTerm}"
         -- dbg_trace s!"Found proof term for {name}:= {← exprInf proofTerm} : {← ppExpr (← inferType proofTerm)} == {tyStr}"
