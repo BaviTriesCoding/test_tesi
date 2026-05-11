@@ -86,11 +86,10 @@ theorem OrElim''  (h1: (A ∧ B) ∨ C) (h2: A → C) : C := by
   or_e h1 ab c
   . apply h2 (And.left ab)
   . exact c
--- Bavi: per capire quando ho un ramo aperto o un ramo chiuso, devo vedere se è una mvar (ramo aperto) o una fvar (ramo chiuso). Per le mvar bisogna mostrare le ipotesi, per le fvar no.
 
-theorem NotIntro (P : Prop) (h : ¬P) : ¬P := by
-  intro p
-  apply h p
+theorem NotIntro (P : Prop) (h : ¬P): ¬P := by
+  intro h2
+  apply h h2
 
 theorem NotIntro' (P : Prop) (h : ¬P) : P → False := by
   intro p

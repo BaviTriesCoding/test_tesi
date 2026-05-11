@@ -15,36 +15,67 @@ inductive NDTree where
   | leaf      : List (Name × NDTree) → Name → Formula → isDischarged → NDTree                        -- .fvar
   | node      : List (Name × NDTree) → Formula → Rule → List NDTree → NDTree  -- .mvar
   | openNode  : List (Name × NDTree) → Formula → NDTree
-  | unhandled : Proof → Formula → NDTree                        -- Per rappresentare i nodi che non siamo ancora in grado di gestire
+  | unhandled : NDTree                        -- Per rappresentare i nodi che non siamo ancora in grado di gestire
   deriving FromJson, ToJson, Server.RpcEncodable, BEq
 
-def NDTree.isLeaf (e : NDTree) : Bool :=
-  match e with
+mutual
+  def ndTreeToString : NDTree → String
+    | .leaf _ name formula isDis =>
+        let bracket := if isDis then "[" else ""
+        s!"{bracket}{name}: {formula}{bracket}"
+    | .node _ formula rule children =>
+        s!"{formula} ═{rule}→ {ndTreeListToString children}"
+    | .openNode _ formula =>
+        s!"⸢{formula}⸥"
+    | .unhandled =>
+        "unhandled"
+
+  def ndTreeListToString : List NDTree → String
+    | [] => "[]"
+    | l  => "[" ++ String.intercalate ", " (l.map ndTreeToString) ++ "]"
+
+  def eqTree : NDTree → NDTree → Bool
+    | .leaf _ n1 f1 d1, .leaf _ n2 f2 d2 =>
+        n1 == n2 && f1 == f2 && d1 == d2
+    | .node _ f1 r1 c1, .node _ f2 r2 c2 =>
+        f1 == f2 && r1 == r2 && eqTreeList c1 c2
+    | .openNode _ f1, .openNode _ f2 =>
+        f1 == f2
+    | .unhandled, .unhandled => true
+    | _, _ => false
+
+  def eqTreeList : List NDTree → List NDTree → Bool
+    | [], [] => true
+    | x::xs, y::ys => eqTree x y && eqTreeList xs ys
+    | _, _ => false
+
+end
+
+instance : ToString NDTree where
+  toString := ndTreeToString
+
+instance : ToString (List NDTree) where
+  toString := ndTreeListToString
+
+instance : BEq NDTree where
+  beq := eqTree
+
+def NDTree.isLeaf: NDTree → Bool
   | .leaf _ _ _ _ => true
   | _ => false
 
-def NDTree.isNode (e : NDTree) : Bool :=
-  match e with
+def NDTree.isNode : NDTree →  Bool
   | .node _ _ _ _ => true
   | _ => false
 
-def NDTree.isOpenNode (e : NDTree) : Bool :=
-  match e with
+def NDTree.isOpenNode : NDTree → Bool
   | .openNode _ _ => true
   | _ => false
 
-def NDTree.isUnhandled (e : NDTree) : Bool :=
-  match e with
-  | .unhandled _ _ => true
+def NDTree.isUnhandled : NDTree → Bool
+  | .unhandled => true
   | _ => false
 
-/-instance : BEq NDTree where
-  beq a b :=
-    match a, b with
-    | .leaf _ nl fl _, .leaf _ nr fr _ => nl == nr && fl == fr
-    | .node _ fl rl ll, .node _ fr rr lr => fl == fr && rl == rr && ll == lr
-    | .openNode _ _ , .openNode _ _ => true
-    | _, _ => false-/
 
 abbrev Hyp := (Name × NDTree)
 
@@ -83,11 +114,9 @@ partial def NDTree.toJson : NDTree → String
       }") ++ "],
       \"formula\":\"" ++ f ++ "\"
     }"
-  | .unhandled p f =>
+  | .unhandled  =>
     "{
-      \"type\":\"unhandled\",
-      \"formula\":\"" ++ f ++ "\",
-      \"unhandledProof\": \"" ++ p ++ "\"
+      \"type\":\"unhandled\"
     }"
 
 partial def NDTree.toString (tree : NDTree) : String := tree.toJson
@@ -97,11 +126,10 @@ def Hyp.toString (h : Hyp) : String :=
   s!"{name} : {tree.toString}"
 
 
-def isTreeDischarged (t : NDTree) (rootHyps : List Hyp) : Bool :=
+def isTreeDischarged (t : NDTree) : Bool :=
   match t with
   | .leaf hyps name formula _ =>
-    let hyps' := hyps.filter (fun x => !rootHyps.contains x)
-    hyps'.foldl (fun res (name', value) =>
+    hyps.foldl (fun res (name', value) =>
       match value, res with
       | _, true => true
       | .leaf _ _ formula' _ , false =>
@@ -111,31 +139,32 @@ def isTreeDischarged (t : NDTree) (rootHyps : List Hyp) : Bool :=
   | _ => false
 
 
-mutual
+#check LocalContext
 
-partial def getHypoteses (G: LocalContext) (rootHyps : List Hyp := []) (isLHS : Bool := false) : MetaM (List Hyp) := do
-  let list ← G.decls.foldlM (fun s i => do
-    match s with
-    | [] => return [.none]
-    | _ =>
-       match i with
-       | none => return s
-       | some d =>
-          let t := (← inferType (.fvar d.fvarId))
-          if t.isSort then
-            return s
-          match d.value? (allowNondep := true) with
-          | none => do
-            let leaf :NDTree := .leaf [] d.userName s!"{← ppExpr t}" (!isLHS && !(← rootHyps.foldlM (fun res h =>
-              match res, h with
-              | true, _ => return true
-              | false, (name, .leaf _ _ f _) => return  name == d.userName && f == s!"{← ppExpr t}"
-              | _, _ => return false
-            ) false ))
-            return s ++ [.some (d.userName, leaf)]
-            -- return s ++ [.some (d.userName, (← (Expr.fvar d.fvarId).toNDTreeM (withHyp := false) (rootHyps := rootHyps)))]
-          | some v => do
-            return s ++ [.some (d.userName, (← v.toNDTreeM (withHyp := false) (rootHyps := rootHyps)))])
+mutual
+partial def getHypoteses (rootHyps : List Hyp := []) (isLHS : Bool := false) : MetaM (List Hyp) := do
+  let list ← (← getLCtx).decls.foldlM (fun s i => do
+    match s, i with
+    | [], _ => return [.none]
+    | _, none => return s
+    | _, some d =>
+        let t := (← inferType (.fvar d.fvarId))
+        if t.isProp then
+          return s
+        if rootHyps.contains (d.userName, (NDTree.leaf [] d.userName s!"{← ppExpr t}" false)) then
+          return s
+        match d.value? (allowNondep := true) with
+        | none => do
+          let leaf :NDTree := .leaf [] d.userName s!"{← ppExpr t}" (!isLHS && !(← rootHyps.foldlM (fun res h =>
+            match res, h with
+            | true, _ => return true
+            | false, (name, .leaf _ _ f _) => return  name == d.userName && f == s!"{← ppExpr t}"
+            | _, _ => return false
+          ) false ))
+          return s ++ [.some (d.userName, leaf)]
+          -- return s ++ [.some (d.userName, (← (Expr.fvar d.fvarId).toNDTreeM (withHyp := false) (rootHyps := rootHyps)))]
+        | some v => do
+          return s ++ [.some (d.userName, (← v.toNDTreeM (withHyp := false) (rootHyps := rootHyps)))])
     []
 
   return list.filterMap id
@@ -144,7 +173,7 @@ partial def getHypoteses (G: LocalContext) (rootHyps : List Hyp := []) (isLHS : 
 partial def Lean.Expr.toNDTreeM (e : Expr) (withHyp := true) (rootHyps : List Hyp := []) : MetaM NDTree := do
   withAggressiveInstantiateMVars e fun e => do
   let (fn, args') := e.withApp fun e a => (e, a.toList)
-  let args ← args'.filterMapM (fun arg => do if (← inferType arg).isSort then return none else return some arg)
+  let args ← args'.filterMapM (fun arg => do if (← inferType arg).isProp then return none else return some arg)
   /- -- debug purpose
   let fnPrintable := ← exprInfo fn
   let mut argsPrintable : List String := []
@@ -152,7 +181,7 @@ partial def Lean.Expr.toNDTreeM (e : Expr) (withHyp := true) (rootHyps : List Hy
     argsPrintable := argsPrintable ++ [s!"{(← exprInfo arg)}"]
   dbg_trace s!"{fnPrintable} : {argsPrintable}"
   -- -/
-  let hyps ← if withHyp then getHypoteses (← getLCtx) (rootHyps := rootHyps) else pure []
+  let hyps ← if withHyp then getHypoteses (rootHyps := rootHyps) else pure []
   let formula := s!"{← ppExpr (← inferType e)}"
   match fn, args with
   -- ↓ casi normalmente impossibili ↓
@@ -161,16 +190,18 @@ partial def Lean.Expr.toNDTreeM (e : Expr) (withHyp := true) (rootHyps : List Hy
   | (.sort _), []            => throwError ".sort unexpected in a proof"
   | (.lit _), []             => throwError ".lit unexpected in a proof"
   -- ↓ foglie ↓
-  | (.const n _), [] => return .leaf hyps n.subHygName formula ( isTreeDischarged (.leaf hyps n formula false) rootHyps)
+  | (.const n _), [] => return .leaf hyps n.subHygName formula ( isTreeDischarged (.leaf hyps n formula false))
   | (.fvar id), [] => do
       let decl ← Meta.getFVarLocalDecl (.fvar id)
-      -- let isDischarged := ((hypotheses.map fun ⟨n, _⟩ => n).contains decl.userName) -- utilizzando le decls, non è chiaro come dovrei distinguerle
-      return .leaf hyps decl.userName.subHygName (toString (← ppExpr decl.type)) ( isTreeDischarged (.leaf hyps decl.userName (toString (← ppExpr decl.type)) false) rootHyps)
+      match decl.value? with
+      | none => return .leaf hyps decl.userName.subHygName (toString (← ppExpr decl.type)) ( isTreeDischarged (.leaf hyps decl.userName (toString (← ppExpr decl.type)) false))
+      | some v => return ← v.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps)
+
   | (.const ``sorryAx _), _ => return .leaf hyps `sorryAx "sorry" false
   -- ↓ nodi aperti ↓
   | (.mvar mmmid), [] => do
       mmmid.withContext do
-        return .openNode (← if withHyp then do getHypoteses (← getLCtx) (rootHyps := rootHyps) else pure []) formula
+        return .openNode (← if withHyp then do getHypoteses (rootHyps := rootHyps) else pure []) formula
   -- ↓ nodi ↓
   | (.letE n t v b _), [] => do
     withLetDecl n.subHygName t v fun fv =>
@@ -254,16 +285,18 @@ partial def Lean.Expr.toNDTreeM (e : Expr) (withHyp := true) (rootHyps : List Hy
       let br' := br.instantiate1 fvr
       br'.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps)
     return .node hyps formula "↔I" [childL, childR]
-  | (.const `Iff.intro _), arg0::(.lam nr tr br bir)::_ => do
+  | (.const `Iff.intro _), _::(.lam nr tr br bir)::_ => do
     let childR ← withLocalDecl nr.subHygName bir tr fun fvr => do
       let br' := br.instantiate1 fvr
       br'.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps)
-    return .node hyps formula "↔I" [← arg0.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps), childR]
-  | (.const `Iff.intro _), (.lam nl tl bl bil)::arg1::_ => do
+    return .node hyps formula "↔I" [(NDTree.unhandled), childR]
+    -- return .node hyps formula "↔I" [← arg0.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps), childR]
+  | (.const `Iff.intro _), (.lam nl tl bl bil)::_::_ => do
     let childL ← withLocalDecl nl.subHygName bil tl fun fvl => do
       let bl' := bl.instantiate1 fvl
       bl'.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps)
-    return .node hyps formula "↔I" [childL, ← arg1.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps)]
+    return .node hyps formula "↔I" [childL, (NDTree.unhandled)]
+    -- return .node hyps formula "↔I" [childL, ← arg1.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps)]
   | fn, args => do
       let children ← args.mapM fun arg =>  arg.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps)
       return .node hyps formula s!"{← ppExpr fn}" (children)
@@ -274,7 +307,6 @@ end
 -- RPC METHOD: GET TREE AS JSON
 -- ══════════════════════════════════════════════════════════════════
 
--- Prints the names of the vars in the LocalContext
 def reprLCtx (hyps : List Hyp) : MetaM String := do
   return ", ".intercalate (hyps.map fun hyp =>
     match hyp with
@@ -283,32 +315,30 @@ def reprLCtx (hyps : List Hyp) : MetaM String := do
     | _ => ""
   )
 
+structure DebugLogParams where
+  msg : String
+  deriving FromJson, ToJson
+
+structure DebugLogResult where
+  msg : String
+  deriving FromJson, ToJson, Server.RpcEncodable
 
 open Lean Server RequestM in
 @[server_rpc_method]
-def debugLog (msg : String) : RequestM (RequestTask String) := do
-  dbg_trace "[DEBUG] {msg}"
-  asTask do return s!"Logged: {msg}"
+def debugLog (p : DebugLogParams) : RequestM (RequestTask DebugLogResult) := do
+  dbg_trace "[DEBUG] {p.msg}"
+  asTask do return {msg := s!"Logged: {p.msg}"}
 
--- ══════════════════════════════════════════════════════════════════
--- RPC PARAMS & RESULT
--- ══════════════════════════════════════════════════════════════════
 
 structure DeductionAtCursorParams where
   pos : Lsp.Position
   deriving FromJson, ToJson
-
-structure DeductionAtCursorResult where
-  thmName  : String
-  thmType  : String
-  deriving FromJson, ToJson, Server.RpcEncodable
 
 structure TreeAsJsonResult where
   thmName : String
   thmType : String
   treeJson : String
   deriving FromJson, ToJson, Server.RpcEncodable
-
 
 open RequestM in
 @[server_rpc_method]
@@ -339,11 +369,12 @@ def getTreeAsJson (params : DeductionAtCursorParams) :
       /- -/
       -- dbg_trace s!"La mvar si chiama {mmmid.name}"
       mmmid.withContext do
-        if !(← inferType (← inferType proofTerm)).isSort then throwError s!"Il termine trovato non è una prova: {← exprInfo proofTerm} : {← ppExpr (← inferType proofTerm)}"
-        let rootHyps ← getHypoteses (← getLCtx) (isLHS := true)
+        if !(← inferType (← inferType proofTerm)).isProp then throwError s!"Il termine trovato non è una prova: {← exprInfo proofTerm} : {← ppExpr (← inferType proofTerm)}"
+        let rootHyps ← getHypoteses (isLHS := true)
         let tree ← (proofTerm.toNDTreeM (rootHyps := rootHyps))
-        -- dbg_trace s!"Found proof term for {name}: {← exprInf proofTerm}"
-        -- dbg_trace s!"Found proof term for {name}:= {← exprInf proofTerm} : {← ppExpr (← inferType proofTerm)} == {tyStr}"
+        -- dbg_trace s!"{← exprInfo proofTerm}"
+        -- dbg_trace s!"Found proof term for {name}: {← exprInfo proofTerm}"
+        -- dbg_trace s!"Found proof term for {name}:= {← exprInfo proofTerm} : {← ppExpr (← inferType proofTerm)} == {tyStr}"
         return { thmName := toString name, thmType := s!"{← reprLCtx rootHyps} ⊢ {← ppExpr (← inferType proofTerm)}", treeJson := tree.toJson }
 
 -- ══════════════════════════════════════════════════════════════════
@@ -357,31 +388,27 @@ def NDTreeJsonViewerWidget : Widget.Module where
 /-
 ═══════════════════════════════════════════════════════════════════
 TODO:
-- a)  [✓] a volte il JSON contiene caratteri non permessi (trovare la lista dei caratteri accettati)
-    json non accetta tutti i caratteri escaped, quindi ho risolto eliminandoli dal json finale nel caso vengano prodotti.
-    const validJSON = res.treeJson.replace(/[\x00-\x1F\x7F-\x9F]/g, '');
-- c)  [_] verificare se gli alberi sono esatti e ragionevoli
-- d₁) [✓] problema di taglia degli alberi, che sforano a sinistra
-- d₂) [_] refactor grafico: le linee orizzontali degli alberi devono essere lunghe tanto quanto il massimo tra la larghezza del nodo padre e la larghezza del primo figlio.
-- d₃) [✓] aggiungere un modo per visualizzare gli unhandled.
-- e)  [✓] capire come gestire le foglie scaricate → struttura dati,
-- f₁) [✓] riconoscere il caso ¬e ✓
-- f₂) [✓] riconoscere il caso ¬i
-- f₃) [_] ∀ non testato
-- f₄) [✓] nel caso in cui ci siano più →E, vengono messe in una sola riga, ma bisogna renderle più di una.
-- h)  [✓] gestione del caso have (creazione di alberi "separati")
-- i)  [ ] in ExprInfo reimplementare e.isArrow perchè violiamo precondizione
-          di non occorrenza delle bvar e quindi alcuni diventano forall;
-          il bug sembra esserci anche per la resa dei nodi (ma può avere una causa diversa)
-- l)  [ ] gestisci il caso .const (ora unhandled)
-- m)  [✓] set theory ex. 8 unexpected bound variable
-- n)  [✓] refactoring del codice partendo dalla get_app_fn_args e poi facendo pattern matching
-          doppio e profondo su testa e argomenti
-          Nota: per iniziare usa unhandled in tutti i casi in cui i vari orElim etc. non sono
-          come li vorresti; più avanti si può pensare a cosa fare nei casi residui
-- o)  [✓] nel caso (ora sono due ma dopo la ristrutturazione del codice sarà 1) di una mvar,
-          recuperare la lista delle ipotesi usando "reprLCtx" e non "hypotheses" perchè possono
-          differire; si vedranno probabilmente cose discrepanze/cose strane (tombstones) e
-          vedremo come gestirle
+[_] verificare se gli alberi sono esatti e ragionevoli
+[_] refactor grafico: le linee orizzontali degli alberi devono essere lunghe tanto quanto il massimo tra la larghezza del nodo padre e la larghezza del primo figlio.
+[_] ∀ non testato
+[_] in ExprInfo reimplementare e.isArrow perchè violiamo precondizione di non occorrenza delle bvar e quindi alcuni diventano forall; il bug sembra esserci anche per la resa dei nodi (ma può avere una causa diversa)
+[_] problemi nei nomi (es. set_theory.set†)
+[_] evitare di mostrare il namespace dentro i nomi
+[_] capire che expr è set e farlo sparire
+════════════════════════════════════════════════════════════════════
+DONE:
+[✓] a volte il JSON contiene caratteri non permessi (trovare la lista dei caratteri accettati) json non accetta tutti i caratteri escaped, quindi ho risolto eliminandoli dal json finale nel caso vengano prodotti. const validJSON = res.treeJson.replace(/[\x00-\x1F\x7F-\x9F]/g, '');
+[✓] problema di taglia degli alberi, che sforano a sinistra
+[✓] aggiungere un modo per visualizzare gli unhandled.
+[✓] capire come gestire le foglie scaricate → struttura dati,
+[✓] riconoscere il caso ¬i
+[✓] riconoscere il caso ¬e
+[✓] nel caso in cui ci siano più →E, vengono messe in una sola riga, ma bisogna renderle più di una.
+[✓] gestione del caso have (creazione di alberi "separati")
+[✓] gestisci il caso .const (ora unhandled)
+[✓] set theory ex. 8 unexpected bound variable
+[✓] refactoring del codice partendo dalla get_app_fn_args e poi facendo pattern matching doppio e profondo su testa e argomenti Nota: per iniziare usa unhandled in tutti i casi in cui i vari orElim etc. non sono come li vorresti; più avanti si può pensare a cosa fare nei casi residui
+[✓] nel caso (ora sono due ma dopo la ristrutturazione del codice sarà 1) di una mvar,recuperare la lista delle ipotesi usando "reprLCtx" e non "hypotheses" perchè possonodifferire; si vedranno probabilmente cose discrepanze/cose strane (tombstones) e vedremo come gestirle
+[✓] filtrare le ipotesi globali dalle ipotesi interne ai nodi
 ════════════════════════════════════════════════════════════════════
 -/
