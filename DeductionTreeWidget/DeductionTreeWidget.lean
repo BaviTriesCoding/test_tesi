@@ -395,6 +395,7 @@ TODO:
 [_] problemi nei nomi (es. set_theory.set†)
 [_] evitare di mostrare il namespace dentro i nomi
 [_] capire che expr è set e farlo sparire
+[_] setTheory, ex.9, †² = ⋯ → Z ∈ A, metterlo come unhandled nella gestione dell'and
 ════════════════════════════════════════════════════════════════════
 DONE:
 [✓] a volte il JSON contiene caratteri non permessi (trovare la lista dei caratteri accettati) json non accetta tutti i caratteri escaped, quindi ho risolto eliminandoli dal json finale nel caso vengano prodotti. const validJSON = res.treeJson.replace(/[\x00-\x1F\x7F-\x9F]/g, '');
