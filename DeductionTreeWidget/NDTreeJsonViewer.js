@@ -306,7 +306,7 @@ const OpenNode = ({ hypotheses, formula, disableClick, uniqueId }) => {
   );
 };
 
-const Unhandled = (uniqueId) => {
+const Unhandled = ({ uniqueId }) => {
   return React.createElement(
     "div",
     {
