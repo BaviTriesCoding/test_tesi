@@ -12,53 +12,11 @@ abbrev isDischarged := Bool --Il booleano è per capire se è una foglia aperta 
 abbrev Proof := String -- Nei nodi unhandled è la prova non riconosciuta
 
 inductive NDTree where
-  | leaf      : List (Name × NDTree) → Name → Formula → isDischarged → NDTree                        -- .fvar
-  | node      : List (Name × NDTree) → Formula → Rule → List NDTree → NDTree  -- .mvar
+  | leaf      : List (Name × NDTree) → Name → Formula → isDischarged → NDTree
+  | node      : List (Name × NDTree) → Formula → Rule → List NDTree → NDTree
   | openNode  : List (Name × NDTree) → Formula → NDTree
-  | unhandled : NDTree                        -- Per rappresentare i nodi che non siamo ancora in grado di gestire
+  | unhandled : NDTree
   deriving FromJson, ToJson, Server.RpcEncodable, BEq
-
-mutual
-  def ndTreeToString : NDTree → String
-    | .leaf _ name formula isDis =>
-        let bracket := if isDis then "[" else ""
-        s!"{bracket}{name}: {formula}{bracket}"
-    | .node _ formula rule children =>
-        s!"{formula} ═{rule}→ {ndTreeListToString children}"
-    | .openNode _ formula =>
-        s!"⸢{formula}⸥"
-    | .unhandled =>
-        "unhandled"
-
-  def ndTreeListToString : List NDTree → String
-    | [] => "[]"
-    | l  => "[" ++ String.intercalate ", " (l.map ndTreeToString) ++ "]"
-
-  def eqTree : NDTree → NDTree → Bool
-    | .leaf _ n1 f1 d1, .leaf _ n2 f2 d2 =>
-        n1 == n2 && f1 == f2 && d1 == d2
-    | .node _ f1 r1 c1, .node _ f2 r2 c2 =>
-        f1 == f2 && r1 == r2 && eqTreeList c1 c2
-    | .openNode _ f1, .openNode _ f2 =>
-        f1 == f2
-    | .unhandled, .unhandled => true
-    | _, _ => false
-
-  def eqTreeList : List NDTree → List NDTree → Bool
-    | [], [] => true
-    | x::xs, y::ys => eqTree x y && eqTreeList xs ys
-    | _, _ => false
-
-end
-
-instance : ToString NDTree where
-  toString := ndTreeToString
-
-instance : ToString (List NDTree) where
-  toString := ndTreeListToString
-
-instance : BEq NDTree where
-  beq := eqTree
 
 def NDTree.isLeaf: NDTree → Bool
   | .leaf _ _ _ _ => true
@@ -123,12 +81,6 @@ partial def NDTree.toJson : NDTree → String
       \"type\":\"unhandled\"
     }"
 
-partial def NDTree.toString (tree : NDTree) : String := tree.toJson
-
-def Hyp.toString (h : Hyp) : String :=
-  let (name, tree) := h
-  s!"{name} : {tree.toString}"
-
 
 def isTreeDischarged (t : NDTree) : Bool :=
   match t with
@@ -148,6 +100,13 @@ def Lean.Expr.isSort1 (e: Expr) : Bool :=
   | Expr.sort 1 => true
   | _ => false
 
+def reprLCtx (hyps : List Hyp) : MetaM String := do
+  return ", ".intercalate (hyps.map fun hyp =>
+    match hyp with
+    | (n, .leaf _ _ f _) => s!"{n} : {f}"
+    | (n, .node _ f _ _) => s!"{n} : {f}"
+    | _ => ""
+  )
 
 mutual
 partial def getHypoteses (rootHyps : List Hyp := []) (isLHS : Bool := false) : MetaM (List Hyp) := do
@@ -169,7 +128,6 @@ partial def getHypoteses (rootHyps : List Hyp := []) (isLHS : Bool := false) : M
             | _, _ => return false
           ) false ))
           return s ++ [.some (d.userName, leaf)]
-          -- return s ++ [.some (d.userName, (← (Expr.fvar d.fvarId).toNDTreeM (withHyp := false) (rootHyps := rootHyps)))]
         | some v => do
           return s ++ [.some (d.userName, (← v.toNDTreeM (withHyp := false) (rootHyps := rootHyps)))])
     []
@@ -201,7 +159,6 @@ partial def Lean.Expr.toNDTreeM (e : Expr) (withHyp := true) (rootHyps : List Hy
   | (.bvar _), _            => throwError ".bvar unexpected in a proof"
 
   | (.sort _), _            => throwError ".sort unexpected in a proof"
-  --throwError s!".sort unexpected in a proof"
 
   | (.lit _), _             => throwError ".lit unexpected in a proof"
   -- ↓ foglie ↓
@@ -237,10 +194,8 @@ partial def Lean.Expr.toNDTreeM (e : Expr) (withHyp := true) (rootHyps : List Hy
       return .node hyps s!"{← ppExpr (← inferType fn)}" ruleName [child]
 
   | (.fvar fid), arg::l => do
-    -- nodo base: rappresenta (fvar arg)
     let baseApp  := .app (.fvar fid) arg
     let baseNode := .node hyps s!"{← ppExpr (← inferType baseApp)}" "→E" [(← fn.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps)), (← arg.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps))]
-    -- fold: accumulatore = (expr corrente, nodo corrente)
     let (_, finalNode) ← l.foldlM (
       fun (accApp, accNode) nextArg => do
       let newApp  := .app accApp nextArg
@@ -363,14 +318,6 @@ end
 -- ══════════════════════════════════════════════════════════════════
 -- RPC METHOD: GET TREE AS JSON
 -- ══════════════════════════════════════════════════════════════════
-
-def reprLCtx (hyps : List Hyp) : MetaM String := do
-  return ", ".intercalate (hyps.map fun hyp =>
-    match hyp with
-    | (n, .leaf _ _ f _) => s!"{n} : {f}"
-    | (n, .node _ f _ _) => s!"{n} : {f}"
-    | _ => ""
-  )
 
 structure DebugLogParams where
   msg : String
