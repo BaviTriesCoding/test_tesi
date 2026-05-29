@@ -6,21 +6,26 @@ import { useRpcSession, EditorContext, RpcContext } from "@leanprover/infoview";
 // Style constants (invariati)
 // ──────────────────────────────────────────────────────────────────
 const versionInfo = `Loaded: ${new Date().toLocaleTimeString()}`;
-const WHITE = "#d4d4d4";
-const LIGHTER_GRAY = "#858585";
-const LIGHT_GRAY = "#3c3c3c";
-const DARK_GRAY = "#1e1e1e";
-const ACCENT = "#f57d33";
-const PRIMARY = "#42729b";
-const LIGHT_PRIMARY = "#708ba3";
-const ERROR_RED = "#f44747";
+const WHITE = "var(--vscode-foreground)";
+const LIGHTER_GRAY = "var(--vscode-tab-inactiveForeground)";
+const ACCENT = "var(--vscode-symbolIcon-eventForeground)";
+const PRIMARY = "var(--vscode-textLink-activeForeground)";
+const ERROR_RED = "var(--vscode-errorForeground)";
 
-const containerStyle = {
-  background: "#1e1e1e",
-  color: "#d4d4d4",
-  fontFamily: "monospace",
-  overflowX: "auto",
-};
+const EMBEDDED_STYLES = `
+.rule:hover {
+  background: var(--vscode-editor-background);
+  color: ${WHITE} !important;
+  font-size: .75rem !important;
+  max-width: max-content !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  z-index: 100;
+  border-radius: .25rem;
+  outline: solid .05rem ${WHITE};
+  position-anchor: --anchor;
+  right: anchor(left) !important;
+}`;
 
 // ──────────────────────────────────────────────────────────────────
 // HypothesesContext
@@ -97,7 +102,7 @@ const Leaf = ({
         },
         onClick: handleClick,
       },
-      `${isDischarged ? "[" : ""}${name} : ${formula}${isDischarged ? "]" : ""}`,
+      `${isDischarged ? "[" : ""}${name ? name + " : " : ""}${formula}${isDischarged ? "]" : ""}`,
     ),
   );
 };
@@ -110,8 +115,12 @@ const Node = ({
   disableClick,
   uniqueId,
 }) => {
-  const { sharedHypotheses, setHypotheses, setSelectedHypTree } =
-    useContext(HypothesesContext);
+  const {
+    sharedHypotheses,
+    setHypotheses,
+    selectedHypTree,
+    setSelectedHypTree,
+  } = useContext(HypothesesContext);
   const { result } = useContext(resultContext);
 
   const [selected, setSelected] = useState(false);
@@ -151,7 +160,7 @@ const Node = ({
           ? 0
           : 2 * marginLeft,
     });
-  }, [result]);
+  }, []);
 
   const handleClick = () => {
     if (disableClick) return;
@@ -205,23 +214,29 @@ const Node = ({
           position: "relative",
           height: "0.125rem",
           borderRadius: "10rem",
-          background: WHITE,
+          background: LIGHTER_GRAY,
           width: `${lineInfo.width}px`,
           marginLeft: `${lineInfo.marginLeft}px`,
+          display: "flex",
+          alignItems: "center",
         },
       },
       React.createElement(
         "span",
         {
+          className: "rule",
           style: {
             position: "absolute",
             left: "100%",
             color: LIGHTER_GRAY,
-            whiteSpace: "nowrap",
             userSelect: "none",
+            padding: "0.25rem",
             lineHeight: 1,
             fontSize: "0.5rem",
-            marginLeft: "0.25rem",
+            maxWidth: "2.5rem",
+            overflow: "hidden",
+            whiteSpace: "nowrap",
+            textOverflow: "ellipsis",
           },
         },
         rule,
@@ -395,7 +410,7 @@ const HypothesesDisplay = () => {
           key: i,
           onClick: () => handleHypClick(hyp, i),
           style: {
-            border: `0.0125rem solid ${selectedHypTree?.id === i ? PRIMARY : LIGHT_GRAY}`,
+            border: `0.0125rem solid ${selectedHypTree?.id === i ? PRIMARY : LIGHTER_GRAY}`,
             borderRadius: "0.125rem",
             color: WHITE,
             cursor: hyp.value.type !== "leaf" ? "pointer" : "default",
@@ -416,7 +431,7 @@ const HypothesesDisplay = () => {
               color: hyp.value.type === "leaf" ? "green" : WHITE,
             },
           },
-          `${hyp.value?.isDischarged ? "[" : ""}${hyp.name} : ${hyp.value.formula}${hyp.value?.isDischarged ? "]" : ""}`,
+          `${hyp.value?.isDischarged ? "[" : ""}${hyp.name ? hyp.name + " : ": ""}${hyp.value.formula}${hyp.value?.isDischarged ? "]" : ""}`,
         ),
       ),
     ),
@@ -434,6 +449,14 @@ export default function NDTreeViewer(props) {
   const [error, setError] = useState(null);
   const [sharedHypotheses, setHypotheses] = useState(null);
   const [selectedHypTree, setSelectedHypTree] = useState(null);
+
+  // Inject embedded styles
+  useEffect(() => {
+    const styleEl = document.createElement("style");
+    styleEl.textContent = EMBEDDED_STYLES;
+    document.head.appendChild(styleEl);
+    return () => styleEl.remove();
+  }, []);
 
   useEffect(() => {
     const pos = props.pos;
@@ -462,21 +485,21 @@ export default function NDTreeViewer(props) {
   if (!rs)
     return React.createElement(
       "div",
-      { style: { ...containerStyle, color: ERROR_RED } },
+      { style: { color: ERROR_RED } },
       `⚠ RpcContext non disponibile (${versionInfo})`,
     );
 
   if (error)
     return React.createElement(
       "div",
-      { style: { ...containerStyle, color: ERROR_RED } },
+      { style: { color: ERROR_RED } },
       `⚠ ${error} (${versionInfo})`,
     );
 
   if (!result)
     return React.createElement(
       "div",
-      { style: { ...containerStyle, color: LIGHTER_GRAY } },
+      { style: { color: LIGHTER_GRAY } },
       `Sposta il cursore su un teorema per visualizzare l'NDTree... (${versionInfo})`,
     );
 
@@ -490,6 +513,7 @@ export default function NDTreeViewer(props) {
         flexDirection: "column",
         alignItems: "stretch",
         gap: "0.5rem",
+        padding: "0.25rem",
       },
     },
 
@@ -514,15 +538,12 @@ export default function NDTreeViewer(props) {
       React.createElement(
         "p",
         {
-          style: { color: LIGHT_PRIMARY, flexGrow: 1, margin: 0 },
+          style: { color: PRIMARY, opacity: "0.75", flexGrow: 1, margin: 0 },
         },
         result.type,
       ),
     ),
 
-    // ── Context wraps both the hypothesis bar and the tree ──
-    // HypothesesDisplay sits OUTSIDE the scrollable tree area,
-    // but both share the same context so clicks still propagate.
     React.createElement(
       HypothesesContext.Provider,
       {
@@ -548,7 +569,7 @@ export default function NDTreeViewer(props) {
             {
               style: {
                 overflowX: "auto",
-                outline: `0.0625 solid ${LIGHT_GRAY}`,
+                outline: `0.0625 solid ${LIGHTER_GRAY}`,
                 display: "flex",
                 padding: "1rem",
               },
@@ -564,6 +585,7 @@ export default function NDTreeViewer(props) {
                 },
               },
               React.createElement(NDTree, {
+                key: `hyp-${JSON.stringify(selectedHypTree).length}`,
                 tree: selectedHypTree?.value,
                 disableClick: true,
                 uniqueId: "hypNode",
@@ -580,7 +602,7 @@ export default function NDTreeViewer(props) {
           {
             style: {
               overflowX: "auto",
-              outline: `0.0625rem solid ${LIGHT_GRAY}`,
+              outline: `0.0625rem solid ${LIGHTER_GRAY}`,
               display: "flex",
               padding: "1rem",
             },
@@ -596,6 +618,7 @@ export default function NDTreeViewer(props) {
               },
             },
             React.createElement(NDTree, {
+              key: `tree-${result.treeJson.length}-${result.name}`,
               tree: result.tree,
               disableClick: false,
               uniqueId: "node",

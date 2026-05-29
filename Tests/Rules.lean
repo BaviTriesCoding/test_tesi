@@ -128,5 +128,25 @@ theorem andAnd (A B C : Prop) (h : A ∧ (B ∧ C)) : C := by
   have c : C := And.right h1
   exact c
 
--- Per disattivare il widget in una sezione:
+theorem forallTest : ∀(A: Prop), A ↔ A := by
+  intro A
+  apply Iff.intro
+  . intro a
+    exact a
+  . intro a'
+    exact a'
+
+theorem iffTest (A B: Prop) (h: A ↔ B) : B → A := by
+  exact h.mpr
+
+theorem iffTest' (A B: Prop) (h: A ↔ B) : A → B := by
+  exact h.mp
+
+theorem IffTest'' (A B: Prop) (h : A ↔ B) : B ↔ A := by
+  exact h.symm
+
+theorem forallTest' (A: Prop) : A → A := by
+  intro a
+  exact a
+
 show_panel_widgets [- NDTreeJsonViewerWidget]

@@ -79,26 +79,30 @@ def NDTree.isUnhandled : NDTree → Bool
 
 abbrev Hyp := (Name × NDTree)
 
+def Lean.Name.isHygName (n : Name) : Bool := if (n.toString.contains "_@" || n.toString.contains "_hyg") then true else false
+
 partial def NDTree.toJson : NDTree → String
   | .leaf hypotheses name f isDischarged =>
     "{
       \"type\":\"leaf\",
       \"hypotheses\": [" ++ ", ".intercalate (hypotheses.map fun ⟨name, value⟩ =>
-      "{
-        \"name\":\"" ++ name.toString ++ "\",
-        \"value\":" ++ value.toJson ++ "
-      }") ++ "],
-      \"name\":\"" ++ name.toString ++ "\",
-      \"formula\":\""++ f ++"\",
+      "{" ++
+        (if !name.isHygName then "\"name\":\"" ++ name.toString ++ "\"," else "")
+        ++ "\"value\":" ++ value.toJson ++ "
+      }") ++ "],"
+      ++
+      (if !name.isHygName then "\"name\":\"" ++ name.toString ++ "\"," else "")
+      ++
+      "\"formula\":\""++ f ++"\",
       \"isDischarged\":" ++ s!"{repr isDischarged}" ++ "
     }"
   | .node hypotheses f rule children =>
     "{
       \"type\":\"node\",
       \"hypotheses\": [" ++ ", ".intercalate (hypotheses.map fun ⟨name, value⟩ =>
-      "{
-        \"name\":\"" ++ name.toString ++ "\",
-        \"value\":" ++ value.toJson ++ "
+      "{" ++
+        (if !name.isHygName then "\"name\":\"" ++ name.toString ++ "\"," else "")
+        ++ "\"value\":" ++ value.toJson ++ "
       }") ++ "],
       \"formula\":\"" ++ f ++ "\",
       \"rule\": \"" ++ rule ++ "\",
@@ -108,9 +112,9 @@ partial def NDTree.toJson : NDTree → String
     "{
       \"type\":\"openNode\",
       \"hypotheses\": [" ++ ", ".intercalate (hypotheses.map fun ⟨name, value⟩ =>
-      "{
-        \"name\":\"" ++ name.toString ++ "\",
-        \"value\":" ++ value.toJson ++ "
+      "{" ++
+        (if !name.isHygName then "\"name\":\"" ++ name.toString ++ "\"," else "")
+        ++ "\"value\":" ++ value.toJson ++ "
       }") ++ "],
       \"formula\":\"" ++ f ++ "\"
     }"
@@ -139,7 +143,11 @@ def isTreeDischarged (t : NDTree) : Bool :=
   | _ => false
 
 
-#check LocalContext
+def Lean.Expr.isSort1 (e: Expr) : Bool :=
+  match e with
+  | Expr.sort 1 => true
+  | _ => false
+
 
 mutual
 partial def getHypoteses (rootHyps : List Hyp := []) (isLHS : Bool := false) : MetaM (List Hyp) := do
@@ -149,8 +157,7 @@ partial def getHypoteses (rootHyps : List Hyp := []) (isLHS : Bool := false) : M
     | _, none => return s
     | _, some d =>
         let t := (← inferType (.fvar d.fvarId))
-        if t.isProp then
-          return s
+        if (← inferType t).isSort1 then return s
         if rootHyps.contains (d.userName, (NDTree.leaf [] d.userName s!"{← ppExpr t}" false)) then
           return s
         match d.value? (allowNondep := true) with
@@ -173,46 +180,62 @@ partial def getHypoteses (rootHyps : List Hyp := []) (isLHS : Bool := false) : M
 partial def Lean.Expr.toNDTreeM (e : Expr) (withHyp := true) (rootHyps : List Hyp := []) : MetaM NDTree := do
   withAggressiveInstantiateMVars e fun e => do
   let (fn, args') := e.withApp fun e a => (e, a.toList)
-  let args ← args'.filterMapM (fun arg => do if (← inferType arg).isProp then return none else return some arg)
+  let args ← args'.filterMapM (fun arg => do
+    return match (← inferType (← inferType arg)) with
+    | .sort (.succ _) => none
+    | _ => some arg)
   /- -- debug purpose
   let fnPrintable := ← exprInfo fn
   let mut argsPrintable : List String := []
   for arg in args do
     argsPrintable := argsPrintable ++ [s!"{(← exprInfo arg)}"]
-  dbg_trace s!"{fnPrintable} : {argsPrintable}"
+  --dbg_trace s!"{fnPrintable} : {argsPrintable}"
   -- -/
   let hyps ← if withHyp then getHypoteses (rootHyps := rootHyps) else pure []
   let formula := s!"{← ppExpr (← inferType e)}"
   match fn, args with
   -- ↓ casi normalmente impossibili ↓
-  | (.forallE _ _ _ _ ), []  => throwError ".forallE unexpected in a proof"
-  | (.bvar _), []            => throwError ".bvar unexpected in a proof"
-  | (.sort _), []            => throwError ".sort unexpected in a proof"
-  | (.lit _), []             => throwError ".lit unexpected in a proof"
+
+  | (.forallE _ _ _ _ ), _  => throwError ".forallE unexpected in a proof"
+
+  | (.bvar _), _            => throwError ".bvar unexpected in a proof"
+
+  | (.sort _), _            => throwError ".sort unexpected in a proof"
+  --throwError s!".sort unexpected in a proof"
+
+  | (.lit _), _             => throwError ".lit unexpected in a proof"
   -- ↓ foglie ↓
-  | (.const n _), [] => return .leaf hyps n.subHygName formula ( isTreeDischarged (.leaf hyps n formula false))
+
+  | (.const (.str _ n) _), [] => return .leaf hyps n.toName formula ( isTreeDischarged (.leaf hyps n.toName formula false))
+
   | (.fvar id), [] => do
       let decl ← Meta.getFVarLocalDecl (.fvar id)
       match decl.value? with
-      | none => return .leaf hyps decl.userName.subHygName (toString (← ppExpr decl.type)) ( isTreeDischarged (.leaf hyps decl.userName (toString (← ppExpr decl.type)) false))
+      | none => return .leaf hyps decl.userName (toString (← ppExpr decl.type)) ( isTreeDischarged (.leaf hyps decl.userName (toString (← ppExpr decl.type)) false))
       | some v => return ← v.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps)
 
-  | (.const ``sorryAx _), _ => return .leaf hyps `sorryAx "sorry" false
+
+  | (.const `sorryAx _), _ => return .leaf hyps `sorryAx "sorry" false
   -- ↓ nodi aperti ↓
-  | (.mvar mmmid), [] => do
-      mmmid.withContext do
-        return .openNode (← if withHyp then do getHypoteses (rootHyps := rootHyps) else pure []) formula
+
+  | (.mvar mmmid), _ => do
+    mmmid.withContext do
+      return .openNode (← if withHyp then do getHypoteses (rootHyps := rootHyps) else pure []) formula
   -- ↓ nodi ↓
-  | (.letE n t v b _), [] => do
-    withLetDecl n.subHygName t v fun fv =>
+
+  | (.letE n t v b _), _ => do
+    withLetDecl n t v fun fv =>
       let b' := b.instantiate1 fv
-      return ← b'.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps)
-  | (.lam n t b bi), [] => do
-    withLocalDecl n.subHygName bi t fun fv => do
+
+        return ← b'.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps)
+
+  | (.lam n t b bi), _ => do
+    withLocalDecl n bi t fun fv => do
       let b := b.instantiate1 fv
       let ruleName := if (← inferType t).isProp then "→I" else "∀I"
       let child ← b.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps)
       return .node hyps s!"{← ppExpr (← inferType fn)}" ruleName [child]
+
   | (.fvar fid), arg::l => do
     -- nodo base: rappresenta (fvar arg)
     let baseApp  := .app (.fvar fid) arg
@@ -229,77 +252,111 @@ partial def Lean.Expr.toNDTreeM (e : Expr) (withHyp := true) (rootHyps : List Hy
   | (.const `And.intro _), arg0::arg1::_ =>
     return .node hyps formula "∧I" [← arg0.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps), ← arg1.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps)]
 
-  | (.const `And.casesOn _), _::andArg::(.lam n t (.lam n' t' b bi') bi)::_ => do
-    withLocalDecl n.subHygName bi t fun fv => do
+
+  | (.const `And.casesOn _), andArg::(.lam n t (.lam n' t' b bi') bi)::_ => do
+    withLocalDecl n bi t fun fv => do
       let b' := b.instantiate1 fv
-      withLocalDecl n'.subHygName bi' t' fun fv' => do
+      withLocalDecl n' bi' t' fun fv' => do
         let b'' := b'.instantiate1 fv'
         return .node hyps formula "∧E" [← andArg.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps), ← b''.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps)]
-  | (.const `And.casesOn _), _::andArg::(.lam n t b bi)::_ => do
-    withLocalDecl n.subHygName bi t fun fv => do
+
+  | (.const `And.casesOn _), andArg::(.lam n t b bi)::_ => do
+    withLocalDecl n bi t fun fv => do
       let b' := b.instantiate1 fv
       return .node hyps formula "∧E" [← andArg.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps), ← b'.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps)]
-  | (.const `And.casesOn _), _::andArg::arg0::_ => do
+
+  | (.const `And.casesOn _), andArg::arg0::_ => do
     return .node hyps formula "∧E" [← andArg.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps), ← arg0.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps)]
   | (.const `And.left _), arg::_ =>
     return .node hyps formula "∧E₁" [← arg.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps)]
+
   | (.const `And.right _), arg::_ =>
     return .node hyps formula "∧E₂" [← arg.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps)]
+
   | (.const `Or.inl _), arg::_ =>
     return .node hyps formula "∨I₁" [← arg.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps)]
+
   | (.const `Or.inr _), arg::_ =>
     return .node hyps formula "∨I₂" [← arg.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps)]
-  | (.const `Or.casesOn _), _::orArg::(.lam nl tl bl bil)::(.lam nr tr br bir)::_ => do
-    let childL ← withLocalDecl nl.subHygName bil tl fun fvl => do
+
+  | (.const `Or.casesOn _), orArg::(.lam nl tl bl bil)::(.lam nr tr br bir)::_ => do
+    let childL ← withLocalDecl nl bil tl fun fvl => do
       let bl' := bl.instantiate1 fvl
       bl'.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps)
-    let childR ← withLocalDecl nr.subHygName bir tr fun fvr => do
+    let childR ← withLocalDecl nr bir tr fun fvr => do
       let br' := br.instantiate1 fvr
       br'.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps)
     return .node hyps formula "∨E" [← orArg.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps), childL, childR]
-  | (.const `Or.casesOn _), _::orArg::arg0::(.lam nr tr br bir)::_ => do
-    let childR ← withLocalDecl nr.subHygName bir tr fun fvr => do
+
+  | (.const `Or.casesOn _), orArg::arg0::(.lam nr tr br bir)::_ => do
+    let childR ← withLocalDecl nr bir tr fun fvr => do
       let br' := br.instantiate1 fvr
       br'.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps)
     return .node hyps formula "∨E" [← orArg.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps), ← arg0.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps), childR]
-  | (.const `Or.casesOn _), _::orArg::(.lam nl tl bl bil)::arg1::_ => do
-    let childL ← withLocalDecl nl.subHygName bil tl fun fvl => do
+
+  | (.const `Or.casesOn _), orArg::(.lam nl tl bl bil)::arg1::_ => do
+    let childL ← withLocalDecl nl bil tl fun fvl => do
       let bl' := bl.instantiate1 fvl
       bl'.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps)
     return .node hyps formula "∨E" [← orArg.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps), childL, ← arg1.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps)]
+
   | (.const `Not.intro _), arg::_ =>
     return .node hyps formula "¬I" [← arg.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps)]
+
   | (.const `absurd _), arg0::arg1::_ =>
     return .node hyps formula "¬E" [← arg0.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps), ← arg1.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps)]
+
   | (.const `False.elim _), arg::_ =>
     return .node hyps formula "⊥E" [← arg.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps)]
+
   | (.const `Exists.intro _), arg::_ =>
     return .node hyps formula "∃I" [← arg.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps)]
+
   | (.const `Exists.elim _), arg0::arg1::_ =>
     return .node hyps formula "∃E" [← arg0.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps), ← arg1.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps)]
+
+  | (.const `Exists.casesOn _), arg0::arg1::_ =>
+    return .node hyps formula "∃E" [← arg0.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps), ← arg1.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps)]
+
+
+  | (.const `Iff.intro _), arg0::arg1::_ => do
+    return .node hyps formula "↔I" [← arg0.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps), ← arg1.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps)]
+
+  | (.const `Iff.mp _), arg::_ => do
+    return .node hyps formula "↔E₁" [← arg.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps)]
+
+  | (.const `Iff.mpr _), arg::_ => do
+    return .node hyps formula "↔E₂" [← arg.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps)]
+
+  /- -- stavo guardando i vari casi di utilizzo di Iff.intro e si usa sempre suppose manualmente, e `we need to prove A → B`, quindi direi di lasciarlo senza la semplificazione
   | (.const `Iff.intro _), (.lam nl tl bl bil)::(.lam nr tr br bir)::_ => do
-    let childL ← withLocalDecl nl.subHygName bil tl fun fvl => do
+    let childL ← withLocalDecl nl bil tl fun fvl => do
       let bl' := bl.instantiate1 fvl
       bl'.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps)
-    let childR ← withLocalDecl nr.subHygName bir tr fun fvr => do
+    let childR ← withLocalDecl nr bir tr fun fvr => do
       let br' := br.instantiate1 fvr
       br'.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps)
     return .node hyps formula "↔I" [childL, childR]
+
   | (.const `Iff.intro _), _::(.lam nr tr br bir)::_ => do
-    let childR ← withLocalDecl nr.subHygName bir tr fun fvr => do
+    let childR ← withLocalDecl nr bir tr fun fvr => do
       let br' := br.instantiate1 fvr
       br'.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps)
     return .node hyps formula "↔I" [(NDTree.unhandled), childR]
     -- return .node hyps formula "↔I" [← arg0.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps), childR]
+
   | (.const `Iff.intro _), (.lam nl tl bl bil)::_::_ => do
-    let childL ← withLocalDecl nl.subHygName bil tl fun fvl => do
+    let childL ← withLocalDecl nl bil tl fun fvl => do
       let bl' := bl.instantiate1 fvl
       bl'.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps)
     return .node hyps formula "↔I" [childL, (NDTree.unhandled)]
-    -- return .node hyps formula "↔I" [childL, ← arg1.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps)]
+    -- return .node hyps formula "↔I" [childL, ← arg1.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps)]-/
+
   | fn, args => do
       let children ← args.mapM fun arg =>  arg.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps)
-      return .node hyps formula s!"{← ppExpr fn}" (children)
+      match fn with
+      | .const (.str _ n) _ => return .node hyps formula s!"{n.toName}" (children)
+      | _ => return .node hyps formula s!"{← ppExpr fn}" (children)
 
 end
 
@@ -369,7 +426,7 @@ def getTreeAsJson (params : DeductionAtCursorParams) :
       /- -/
       -- dbg_trace s!"La mvar si chiama {mmmid.name}"
       mmmid.withContext do
-        if !(← inferType (← inferType proofTerm)).isProp then throwError s!"Il termine trovato non è una prova: {← exprInfo proofTerm} : {← ppExpr (← inferType proofTerm)}"
+        if proofTerm.isSort1 then throwError s!"Il termine trovato non è una prova: {← exprInfo proofTerm} : {← ppExpr (← inferType proofTerm)}"
         let rootHyps ← getHypoteses (isLHS := true)
         let tree ← (proofTerm.toNDTreeM (rootHyps := rootHyps))
         -- dbg_trace s!"{← exprInfo proofTerm}"
@@ -388,14 +445,7 @@ def NDTreeJsonViewerWidget : Widget.Module where
 /-
 ═══════════════════════════════════════════════════════════════════
 TODO:
-[_] verificare se gli alberi sono esatti e ragionevoli
-[_] refactor grafico: le linee orizzontali degli alberi devono essere lunghe tanto quanto il massimo tra la larghezza del nodo padre e la larghezza del primo figlio.
-[_] ∀ non testato
 [_] in ExprInfo reimplementare e.isArrow perchè violiamo precondizione di non occorrenza delle bvar e quindi alcuni diventano forall; il bug sembra esserci anche per la resa dei nodi (ma può avere una causa diversa)
-[_] problemi nei nomi (es. set_theory.set†)
-[_] evitare di mostrare il namespace dentro i nomi
-[_] capire che expr è set e farlo sparire
-[_] setTheory, ex.9, †² = ⋯ → Z ∈ A, metterlo come unhandled nella gestione dell'and
 ════════════════════════════════════════════════════════════════════
 DONE:
 [✓] a volte il JSON contiene caratteri non permessi (trovare la lista dei caratteri accettati) json non accetta tutti i caratteri escaped, quindi ho risolto eliminandoli dal json finale nel caso vengano prodotti. const validJSON = res.treeJson.replace(/[\x00-\x1F\x7F-\x9F]/g, '');
@@ -411,5 +461,11 @@ DONE:
 [✓] refactoring del codice partendo dalla get_app_fn_args e poi facendo pattern matching doppio e profondo su testa e argomenti Nota: per iniziare usa unhandled in tutti i casi in cui i vari orElim etc. non sono come li vorresti; più avanti si può pensare a cosa fare nei casi residui
 [✓] nel caso (ora sono due ma dopo la ristrutturazione del codice sarà 1) di una mvar,recuperare la lista delle ipotesi usando "reprLCtx" e non "hypotheses" perchè possonodifferire; si vedranno probabilmente cose discrepanze/cose strane (tombstones) e vedremo come gestirle
 [✓] filtrare le ipotesi globali dalle ipotesi interne ai nodi
+[✓] refactor grafico: le linee orizzontali degli alberi devono essere lunghe tanto quanto il massimo tra la larghezza del nodo padre e la larghezza del primo figlio.
+[✓] capire che expr è set e farlo sparire
+[✓] verificare se gli alberi sono esatti e ragionevoli
+[✓] ∀ non testato
+[✓] evitare di mostrare il namespace dentro i nomi
+[✓] problemi nei nomi (es. set_theory.set†)
 ════════════════════════════════════════════════════════════════════
 -/
