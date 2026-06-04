@@ -193,15 +193,22 @@ partial def Lean.Expr.toNDTreeM (e : Expr) (withHyp := true) (rootHyps : List Hy
       let child ← b.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps)
       return .node hyps s!"{← ppExpr (← inferType fn)}" ruleName [child]
 
-  | (.fvar fid), arg::l => do
-    let baseApp  := .app (.fvar fid) arg
-    let baseNode := .node hyps s!"{← ppExpr (← inferType baseApp)}" "→E" [(← fn.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps)), (← arg.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps))]
-    let (_, finalNode) ← l.foldlM (
+  | (.fvar _), _::_ => do
+    let baseNode := (← fn.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps))
+    let (_, finalNode) ← args'.foldlM (
       fun (accApp, accNode) nextArg => do
       let newApp  := .app accApp nextArg
-      let newNode := .node hyps s!"{← ppExpr (← inferType newApp)}" "→E" [accNode, (← nextArg.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps))]
-      return (newApp, newNode)
-    ) (baseApp, baseNode)
+      match (← inferType (← inferType nextArg)) with
+      | (.sort 0) =>
+        let newNode := .node hyps s!"{← ppExpr (← inferType newApp)}" "→E" [accNode, (← nextArg.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps))]
+        return (newApp, newNode)
+      | (.sort (.succ 0)) =>
+        let newNode := .node hyps s!"{← ppExpr (← inferType newApp)}" "∀E" [accNode]
+        return (newApp, newNode)
+      | _ =>
+        let newNode := (← nextArg.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps))
+        return (newApp, newNode)
+    ) (fn, baseNode)
     return finalNode
 
   | (.const `And.intro _), arg0::arg1::_ =>
