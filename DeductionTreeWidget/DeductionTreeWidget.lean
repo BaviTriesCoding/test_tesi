@@ -399,6 +399,7 @@ def NDTreeJsonViewerWidget : Widget.Module where
 /-
 ═══════════════════════════════════════════════════════════════════
 TODO:
+[_] gestione ex. 4 iff_e
 [_] in ExprInfo reimplementare e.isArrow perchè violiamo precondizione di non occorrenza delle bvar e quindi alcuni diventano forall; il bug sembra esserci anche per la resa dei nodi (ma può avere una causa diversa)
 ════════════════════════════════════════════════════════════════════
 DONE:
