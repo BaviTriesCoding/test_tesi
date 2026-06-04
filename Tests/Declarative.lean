@@ -3,6 +3,12 @@ open Lean Lean.Elab.Tactic
 
 namespace matita
 
+macro "or_e" h:term:max ppSpace colGt l1:ident ppSpace colGt l2:ident : tactic =>
+ `(tactic|refine Or.casesOn $h (fun $l1 => ?_) (fun $l2 => ?_))
+
+macro "and_e" h:term:max ppSpace colGt l1:ident ppSpace colGt l2:ident : tactic =>
+ `(tactic|refine And.casesOn $h (fun $l1 $l2 => ?_))
+
 syntax "_last_hypothesis_" : term
 
 elab_rules : term
@@ -84,9 +90,9 @@ macro_rules
   | `(tactic | we proved $term) =>
     `(tactic | have _ : $term := by solve_by_elim only [Or.inr, Or.inl, matita.iff_e, And.left, And.right])
   | `(tactic | $mj:matitaJust we proved $term₁ as $ident₁ and $term₂ as $ident₂) =>
-    `(tactic | $mj:matitaJust we proved $term₁ ∧ $term₂ <;> cases _last_hypothesis_ <;> case' _ $ident₁:ident $ident₂:ident => skip)
+    `(tactic | $mj:matitaJust we proved $term₁ ∧ $term₂ <;> and_e _last_hypothesis_ $ident₁:ident $ident₂:ident)
   | `(tactic | we proved $term₁ as $ident₁ and $term₂ as $ident₂) =>
-    `(tactic | we proved $term₁ ∧ $term₂ <;> cases _last_hypothesis_ <;> case' _ $ident₁:ident $ident₂:ident => skip)
+    `(tactic | we proved $term₁ ∧ $term₂ <;> and_e _last_hypothesis_ $ident₁:ident $ident₂:ident)
   | `(tactic | $mj:matitaJust let $ident₁ : $term₁ such that $term₂ as $ident₂) =>
     `(tactic | $mj:matitaJust we proved ∃$ident₁:ident : $term₁, $term₂ <;> cases _last_hypothesis_ <;> case' _ $ident₁:ident $ident₂:ident => skip)
   | `(tactic | let $ident₁ : $term₁ such that $term₂ as $ident₂) =>

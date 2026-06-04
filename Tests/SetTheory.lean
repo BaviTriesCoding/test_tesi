@@ -726,10 +726,10 @@ theorem intersect_union₁: ∀A B C, A∩(B∪C) ⊆ A∩B ∪ A∩C := by
  --Dall'assioma dell'unione e Z∈B∪C abbiamo che Z∈B ∨ Z∈C
  thus by ax_union1 we proved Z∈B ∨ Z∈C as H₂'
  we proceed by cases on H₂' to prove Z ∈ A∩B ∪ A∩C
- . case intro.inl (K: Z∈B)
+ . case inl (K: Z∈B)
    thus by H₁, ax_intersect2 we proved Z ∈ A∩B
    thus by ax_union2 done
- . case intro.inr (K: Z∈C)
+ . case inr (K: Z∈C)
    thus by H₁, ax_intersect2 we proved Z ∈ A∩C
    thus by ax_union2 done
 
