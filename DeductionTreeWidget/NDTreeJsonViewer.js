@@ -266,10 +266,22 @@ const Node = ({
   );
 };
 
-const OpenNode = ({ hypotheses, formula, disableClick, uniqueId }) => {
+const OpenNode = ({
+  hypotheses,
+  formula,
+  isCurrentGoal,
+  disableClick,
+  uniqueId,
+}) => {
   const { sharedHypotheses, setHypotheses, setSelectedHypTree } =
     useContext(HypothesesContext);
   const [selected, setSelected] = useState(false);
+
+  useEffect(() => {
+    if (isCurrentGoal) {
+      handleClick();
+    }
+  }, []);
 
   useEffect(() => {
     if (selected && sharedHypotheses !== hypotheses) {
@@ -431,7 +443,7 @@ const HypothesesDisplay = () => {
               color: hyp.value.type === "leaf" ? "green" : WHITE,
             },
           },
-          `${hyp.value?.isDischarged ? "[" : ""}${hyp.name ? hyp.name + " : ": ""}${hyp.value.formula}${hyp.value?.isDischarged ? "]" : ""}`,
+          `${hyp.value?.isDischarged ? "[" : ""}${hyp.name ? hyp.name + " : " : ""}${hyp.value.formula}${hyp.value?.isDischarged ? "]" : ""}`,
         ),
       ),
     ),

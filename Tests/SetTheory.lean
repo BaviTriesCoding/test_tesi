@@ -210,7 +210,6 @@ show_panel_widgets [NDTreeJsonViewerWidget]
 
 -- Esercizio 1: riflessività dell'inclusione
 theorem reflexivity_inclusion: ∀A, A ⊆ A := by
--- Riccardo Baviera: correttezza dell'albero [✓]
   /- Stiamo dimostrando un ∀ quindi dobbiamo introdurlo,
      per dimostrare ∀X,( P ) dobbimo fissare X e dimostrare P
      In questo caso (∀A, A ⊆ A), fissiamo A e passiamo a dimostrare A ⊆ A
@@ -235,8 +234,6 @@ theorem reflexivity_inclusion: ∀A, A ⊆ A := by
 
 -- Esercizio 2: transitività dell'inclusione
 theorem transitivity_inclusion: ∀A B C, A ⊆ B → B ⊆ C → A ⊆ C := by
--- Riccardo Baviera: correttezza dell'albero [×]
--- Problema nel `thus by H₁ we proved Z ∈ B`, che genera un termine sbagliato.
  -- Introduciamo gli insiemi A, B, C
  assume A: set
  assume B: set
@@ -266,8 +263,6 @@ theorem transitivity_inclusion: ∀A B C, A ⊆ B → B ⊆ C → A ⊆ C := by
 
 -- Esercizio 3: due insiemi ognuno sottoinsieme dell'altro sono uguali
 theorem subset_to_eq: ∀A B, A ⊆ B → B ⊆ A → A = B := by
--- Riccardo Baviera: correttezza dell'albero [×]
--- `thus by H₁ done` e `thus by H₂ done` generano un termine sbagliato, che fa scomparire `Z` in qualche maniera, perché lo rende `a† ∈ A → a† ∈ B`
  --fissiamo A e B
  assume A: set
  assume B: set
@@ -306,7 +301,6 @@ theorem subset_to_eq: ∀A B, A ⊆ B → B ⊆ A → A = B := by
 
 -- Esercizio 4: insiemi uguali sono sottoinsiemi uno dell'altro
 theorem eq_to_subset1: ∀A B, A = B → A ⊆ B := by
--- Riccardo Baviera: correttezza dell'albero [✓]
  -- Fissiamo A e B
  assume A: set
  assume B: set
@@ -337,7 +331,6 @@ theorem eq_to_subset1: ∀A B, A = B → A ⊆ B := by
 -- Esercizio 5: insiemi uguali sono sottoinsiemi uno dell'altro
 -- Notate la stretta similitudine dell'enunciato con quello della prova precedente: anche le due dimostrazioni si assomiglieranno...
 theorem eq_to_subset2: ∀A B, A=B → B⊆A := by
--- Riccardo Baviera: correttezza dell'albero [✓] (salta un passaggio )
 -- Fissiamo A e B
 assume A: set
 assume B: set
@@ -362,7 +355,6 @@ thus  by K done
 -- Esercizio 6: transitività dell'uguaglianza
 -- La dimostrazione viene molto abbreviata se utilizziamo come lemmi tutti i teoremi dimostrati in precedenza
 theorem transitivity_equality: ∀(A : set) B C, A=B → B=C → A=C := by
--- Riccardo Baviera: correttezza dell'albero [✓]
  -- Fissiamo A, B, C
  assume A: set
  assume B: set
@@ -398,7 +390,6 @@ theorem transitivity_equality: ∀(A : set) B C, A=B → B=C → A=C := by
 --    ∀A X, X ∈ ∅ → X ∈ A
 -- e potete usare il teorema come lemma come se fosse scritto in forma espansa
 theorem emptyset_is_subset: ∀A, ∅⊆A := by
--- Riccardo Baviera: correttezza dell'albero [✓] (anche se `False` diventa `False†`)
  --Introduciamo il ∀ e passiamo a dimostrare ∅⊆A
  assume A:set
  -- Espandiamo la definizione di ⊆ e passiamo a dimostrare ∀X, X∈∅ → X∈A
@@ -415,9 +406,6 @@ theorem emptyset_is_subset: ∀A, ∅⊆A := by
 
 -- Esercizio 8: idempotenza dell'intersezione
 theorem intersection_idempotent: ∀A, A∩A = A := by
--- Riccardo Baviera: correttezza dell'albero [×]
--- quando viene usato `thus by _ we proved _ as _ and _ as _` viene generato un termine `†² = ⋯ → Z ∈ A` che non ha senso.
--- grazie al pattern matching del generatore dell'albero, viene nascosto un passaggio di intro, ma il termine completo dovrebbe essere simile a questo `∀ (Z: set), †² = ⋯ → Z ∈ A`
 --Introduciamo ∀ e passiamo a dimostrare A∩A = A
  assume A : set
  --Dobbiamo dimostrare A∩A = A, per l'assimoma dell'estensionalità (∀AB,(∀Z, Z∈A ↔ Z∈B) → A=B)
@@ -445,8 +433,6 @@ theorem intersection_idempotent: ∀A, A∩A = A := by
 
 -- Esercizio 9: il vuoto è l'elemento assorbente dell'intersezione
 theorem intersect_empty: ∀A, A∩∅ = ∅ := by
--- Riccardo Baviera: correttezza dell'albero [×]
--- stesso problema di prima legato a `thus by _ we proved _ as _ and _ as _`
  --Introduciamo ∀ e passiamo a dimostrare A∩∅ = ∅
  assume A: set
  --Devo dimostrare A∩∅ = ∅, ma per l'assioma dell'estensionalità posso ridurmi a dimostrare...
@@ -471,7 +457,6 @@ theorem intersect_empty: ∀A, A∩∅ = ∅ := by
 
 -- Esercizio 10: l'unico sottoinsieme dell'insieme vuoto è l'insieme vuoto
 theorem subseteq_emptyset: ∀X, X⊆∅ → X=∅ := by
--- Riccardo Baviera: correttezza dell'albero [✓]
  --Introduciamo ∀ e passiamo a dimostrare X⊆∅ → X=∅
  assume X: set
  --Suppongo X⊆∅ e dimostro X=∅
@@ -485,9 +470,6 @@ theorem subseteq_emptyset: ∀X, X⊆∅ → X=∅ := by
 
 -- Esercizio 11: lemma per dimostrare che l'intersezione è commutativa
 theorem intersect_commutative_aux: ∀A B, A∩B ⊆ B∩A := by
--- Riccardo Baviera: correttezza dell'albero [×]
--- stesso problema di prima legato a `thus by _ we proved _ as _ and _ as _`
--- inoltre `Z∈A` non viene nominato `H₁` ma rimane anonimo (e anche `Z∈B`)
  --Introduciamo i ∀ e passiamo a dimostrare A∩B ⊆ B∩A
  assume A: set
  assume B: set
@@ -505,7 +487,6 @@ theorem intersect_commutative_aux: ∀A B, A∩B ⊆ B∩A := by
 
 -- Esercizio 12: l'intersezione è commutativa
 theorem intersect_commutative: ∀A B, A∩B = B∩A := by
--- Riccardo Baviera: correttezza dell'albero [✓]
  --Introduciamo ∀ e dimostriamo A∩B = B∩A
  assume A : set
  assume B : set
@@ -518,8 +499,6 @@ theorem intersect_commutative: ∀A B, A∩B = B∩A := by
 
 -- Esercizio 13: l'intersezione è bi-monotona
 theorem intersect_monotone: ∀A B A' B', A⊆A' → B⊆B' → (A∩B ⊆ A'∩B') := by
--- Riccardo Baviera: correttezza dell'albero [×]
--- sempre per il problema di `thus by _ we proved _ as _ and _ as _`
  --Introduciamo i ∀
  assume A : set
  assume B: set
@@ -550,8 +529,6 @@ theorem intersect_monotone: ∀A B A' B', A⊆A' → B⊆B' → (A∩B ⊆ A'∩
 
 -- Esercizio 14: l'intersezione è un sottoinsieme
 theorem intersect_is_subset: ∀A B, A∩B ⊆ A := by
--- Riccardo Baviera: correttezza dell'albero [×]
--- sempre per il problema di `thus by _ we proved _ as _ and _ as _`
  --Introduciamo i ∀ e passiamo a dimostrare A∩B ⊆ A
  assume A:set
  assume B:set
@@ -572,9 +549,7 @@ theorem intersect_is_subset: ∀A B, A∩B ⊆ A := by
 
 -- Esercizio 15: l'unione è simmetrica
 theorem union_symmetric: ∀A B, A∪B = B∪A := by
--- Riccardo Baviera: correttezza dell'albero [×]
--- Problema simile a quello di prima, ma stavolta è dato da `we proceed by cases on _ to prove _`, che genera sempre il termine `†² = ⋯ → Z∈A`.
--- Inoltre nel `case (H: Z∈A)` la variabile non viene veramente nominata, ma diventa `[anonymous]`
+-- Riccardo Baviera: rimane il problema `H = ⋯ → ...`
  --Introduciamo i ∀ e passiamo a dimostrare A∪B = B∪A
  assume A : set
  assume B : set
@@ -623,8 +598,7 @@ theorem union_symmetric: ∀A B, A∪B = B∪A := by
 
 -- Esercizio 16: l'insieme vuoto è elemento neutro per l'unione
 theorem union_emptyset: ∀A, A∪∅ = A := by
--- Riccardo Baviera: correttezza dell'albero [×]
--- `we split the proof` genera un termine insensato e `Z∈A` non prende il nome
+-- Riccardo Baviera: rimane il problema `H = ⋯ → ...`
  assume A: set --Introduzione di ∀, passiamo a dimostrare A∪∅ = A
  -- Dall'assioma di estensionalità ci possiamo ridurre a dimostrare...
  by ax_extensionality1 it suffices to prove ∀Z, Z ∈ A∪∅ ↔ Z ∈ A
@@ -647,8 +621,7 @@ theorem union_emptyset: ∀A, A∪∅ = A := by
 
 -- Esercizio 17: esistenza di elementi e monotonia
 theorem exists_member_subset: ∀A B, A⊆B → (∃X, X∈A) → (∃Y, Y∈B) := by
--- Riccardo Baviera: correttezza dell'albero [×]
--- `thus let _ such that _ as _` genera il termine `†² = ⋯ → ∃ Y, Y ∈ B`.
+-- Riccardo Baviera: `thus let _ such that _ as _` genera il termine `†² = ⋯ → ∃ Y, Y ∈ B`.
  --Introduzione di ∀, passiamo a dimostrare A⊆B → (∃X, X∈A) → (∃Y, Y∈B)
  assume A: set
  assume B: set
@@ -669,7 +642,6 @@ theorem exists_member_subset: ∀A B, A⊆B → (∃X, X∈A) → (∃Y, Y∈B) 
 
 -- Esercizio 18: ogni insieme ha un sottoinsieme, prima 9
 theorem exists_subset₁: ∀A, ∃B, B⊆A := by
--- Riccardo Baviera: correttezza dell'albero [✓] (`False` → `False†`)
  assume A: set --Introduzione di ∀, passiamo a dimostrare ∃B, B⊆A
  --Scegliamo ∅ al posto di B, quindi passiamo a dimostrare ∅⊆A
  we choose ∅ and prove ∅⊆A that is equivalent to ∀Z, Z∈∅ → Z∈A
@@ -681,7 +653,6 @@ theorem exists_subset₁: ∀A, ∃B, B⊆A := by
 
 -- Esercizio 19: ogni insieme ha un sottoinsieme, seconda prova
 theorem exists_subset₂: ∀A, ∃B, B⊆A := by
--- Riccardo Baviera: correttezza dell'albero [✓]
  assume A: set --Introduzione di ∀, passiamo a dimostrare  ∃B, B⊆A
  --Scegliamo A al posto di B e passiamo a dimostrare A⊆A
  we choose A and prove A⊆A that is equivalent to ∀Z, Z∈A → Z∈A
@@ -692,8 +663,7 @@ theorem exists_subset₂: ∀A, ∃B, B⊆A := by
 
 -- Esercizio 20: se l'unione è abitata anche uno degli argomenti lo è
 theorem from_union_inhabited: ∀A B, (∃X, X ∈ A∪B) → (∃Y, Y∈A ∨ Y∈B) := by
--- Riccardo Baviera: correttezza dell'albero [×]
--- `thus let _ such that _ as _` + raddoppio delle ipotesi con `suppose ∃_`
+-- Riccardo Baviera: `thus let _ such that _ as _` + raddoppio delle ipotesi con `suppose ∃_`
  --Introduzione di ∀
  assume A: set
  assume B: set
@@ -711,8 +681,7 @@ theorem from_union_inhabited: ∀A B, (∃X, X ∈ A∪B) → (∃Y, Y∈A ∨ Y
 
 -- Esercizio 21: 1/2 distributività dell'intersezione sull'unione
 theorem intersect_union₁: ∀A B C, A∩(B∪C) ⊆ A∩B ∪ A∩C := by
--- Riccardo Baviera: correttezza dell'albero [×]
--- `thus by _ we proved _ as _ and _ as` e `we proceed by cases on _ to prove _ as _`
+-- Riccardo Baviera: `thus by _ we proved _ as _ and _ as` e `we proceed by cases on _ to prove _ as _`
  --Introduzione di ∀
  assume A: set
  assume B: set
@@ -738,7 +707,6 @@ theorem intersect_union₁: ∀A B C, A∩(B∪C) ⊆ A∩B ∪ A∩C := by
 
 -- Esercizio 22: monotonia del powerset
 theorem full_in_monotone: ∀A, A ∈ ℘ A := by
--- Riccardo Baviera: correttezza dell'albero [✓]
  assume A: set
  by /-BEGIN-/ax_powerset2/-END-/ it suffices to prove A ⊆ A
  by /-BEGIN-/reflexivity_inclusion/-END-/ done
@@ -749,7 +717,6 @@ theorem full_in_monotone: ∀A, A ∈ ℘ A := by
 
 -- Esercizio 23: monotonia del powerset 1/2
 theorem powerset_monotone₁: ∀A B, A ⊆ B → ℘ A ⊆ ℘ B := by
--- Riccardo Baviera: correttezza dell'albero [✓]
  -- Suggerimento: non sempre conviene espandere TUTTE le definizioni se avete
  -- già dei lemmi che lavorano sugli enunciati non espansi
  -- La prova è di 9 righe circa e usa un lemma; una volta dovete espandere una definizione
@@ -769,8 +736,6 @@ theorem powerset_monotone₁: ∀A B, A ⊆ B → ℘ A ⊆ ℘ B := by
 
 -- Esercizio 24: monotonia del powerset 2/2
 theorem powerset_monotone₂: ∀A B, ℘ A ⊆ ℘ B → A ⊆ B := by
--- Riccardo Baviera: correttezza dell'albero [×]
--- `thus by _ we proved _` non funziona come dovrebbe
  -- Suggerimento: dovete usare il lemma full_in_monotone.
  -- La prova è di 4-5 righe
  assume A: set
@@ -784,7 +749,6 @@ theorem powerset_monotone₂: ∀A B, ℘ A ⊆ ℘ B → A ⊆ B := by
 
 -- Esercizio 25: powerset dell'intersezione 1/2
 theorem subset_intersection₁: ∀A B Z, Z ⊆ A ∩ B → Z ⊆ A ∧ Z ⊆ B := by
--- Riccardo Baviera: correttezza dell'albero [×]
 -- `thus by _ we proved _ as _ and _ as _`
  -- La prova richiede 17 righe e non usa lemmi
  assume A: set
@@ -811,8 +775,6 @@ theorem subset_intersection₁: ∀A B Z, Z ⊆ A ∩ B → Z ⊆ A ∧ Z ⊆ B 
 
 -- Esercizio 26: powerset dell'intersezione 1/2
 theorem powerset_intersection₁: ∀A B, ℘ (A ∩ B) ⊆ ℘ A ∩ ℘ B := by
--- Riccardo Baviera: correttezza dell'albero [×]
--- `thus by _ we proved _ as _ and _ as _`
  -- La prova richiede 10 righe e il lemma appena dimostrato
  assume A: set
  assume B: set
@@ -831,8 +793,6 @@ theorem powerset_intersection₁: ∀A B, ℘ (A ∩ B) ⊆ ℘ A ∩ ℘ B := b
 
 -- Esercizio 27: powerset dell'intersezione 2/2
 theorem subset_intersection₂: ∀A B Z, Z ⊆ A → Z ⊆ B → Z ⊆ A ∩ B := by
--- Riccardo Baviera: correttezza dell'albero [×]
--- `by H₁, K we proved X ∈ A as K₁` in realtà genera `K ∈ A`
  -- La prova richiede 11 righe, ma nessun lemma
  assume A: set
  assume B: set
@@ -852,8 +812,6 @@ theorem subset_intersection₂: ∀A B Z, Z ⊆ A → Z ⊆ B → Z ⊆ A ∩ B 
 
 -- Esercizio 28: powerset dell'intersezione 2/2
 theorem powerset_intersection₂: ∀A B, ℘ A ∩ ℘ B ⊆ ℘ (A ∩ B) := by
--- Riccardo Baviera: correttezza dell'albero [×]
--- `thus by _ we proved _ as _ and _ as _`
  -- La prova richiede 10 righe e un lemma
  assume A: set
  assume B: set
@@ -870,7 +828,6 @@ theorem powerset_intersection₂: ∀A B, ℘ A ∩ ℘ B ⊆ ℘ (A ∩ B) := b
 #check powerset_intersection₂
 
 theorem foo₁ : ∀ A, A ⊆ A → True := by
--- Riccardo Baviera: correttezza dell'albero [✓]
   intros A H
   -- let h₂ : ∀ Z, Z ∈ A → Z ∈ A := H
   let h₂ := @id (∀ Z, Z ∈ A → Z ∈ A) H
