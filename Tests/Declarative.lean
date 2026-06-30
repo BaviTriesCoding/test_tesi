@@ -3,8 +3,11 @@ open Lean Lean.Elab.Tactic
 
 namespace matita
 
-macro "or_e" h:term:max ppSpace colGt l1:ident ppSpace colGt l2:ident : tactic =>
- `(tactic|refine Or.casesOn $h (fun $l1 => ?_) (fun $l2 => ?_))
+-- macro "or_e" h:term:max ppSpace colGt l1:ident ppSpace colGt l2:ident : tactic =>
+-- `(tactic|refine Or.casesOn $h (fun $l1 => ?_) (fun $l2 => ?_))
+
+macro "or_e_no_names" h:term:max : tactic =>
+ `(tactic|refine Or.casesOn $h (fun _ => ?left) (fun _ => ?right))
 
 macro "and_e" h:term:max ppSpace colGt l1:ident ppSpace colGt l2:ident : tactic =>
  `(tactic|refine And.casesOn $h (fun $l1 $l2 => ?_))
@@ -123,7 +126,7 @@ macro_rules
  | `(tactic| we choose $term₁ and prove $term₂ that is equivalent to $term₃) =>
    `(tactic| we choose $term₁ and prove $term₂ <;> change $term₃)
 
-macro "we " "proceed " "by " "cases " "on " name:ident "to " "prove " stmt:term : tactic => `(tactic|guard_target =ₛ $stmt <;> cases $name:term)
+macro "we " "proceed " "by " "cases " "on " name:ident "to " "prove " stmt:term : tactic => `(tactic|guard_target =ₛ $stmt <;> first | or_e_no_names $name:term |cases $name:term)
 
 macro "we " "proceed " "by " "cases " "on " "the " "guard " t:term : tactic => `(tactic|cases $t:term)
 

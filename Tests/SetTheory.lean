@@ -566,17 +566,18 @@ theorem union_symmetric: ∀A B, A∪B = B∪A := by
    thus by ax_union1 we proved Z∈A ∨ Z∈B as H
    /- H (Z∈A ∨ Z∈B) è un ipotesi di tipo OR, per utilizzarla quindi è necessario diramare la dimostrazione
       In un ramo avremo Z∈A e nell'altro Z∈B -/
+   /- XXX -/
    we proceed by cases on H to prove Z ∈ B∪A  -- ∨-eliminazione
-   . case a.mp.inl (H: Z∈A) -- guardate dove il nome del caso a.mp.inl compare nella finestra di destra
+   . case left (L: Z∈A) -- guardate dove il nome del caso a.mp.inl compare nella finestra di destra
      we need to prove Z ∈ B∪A
      -- Da H possiamo dedurre Z∈B ∨ Z∈A
-     by H we proved Z∈B ∨ Z∈A  -- regola di introduzione dell'or a destra
+     by L we proved Z∈B ∨ Z∈A  -- regola di introduzione dell'or a destra
      -- Da Z∈B ∨ Z∈A e l'assioma dell'unione abbiamo dimostrato Z ∈ B∪A
      thus by ax_union2 done
-   . case a.mp.inr (H: Z∈B) -- guardate dove il nome del caso a.mp.inr compare nella finestra di destra
+   . case right (R: Z∈B) -- guardate dove il nome del caso a.mp.inr compare nella finestra di destra
      we need to prove Z ∈ B∪A
      -- Come nel caso precedente ma abbiamo saltato un passaggio
-     by ax_union2, H done -- combina ax_union2, H e la regola di introduzione dell'or a sinistra
+     by ax_union2, R done -- combina ax_union2, H e la regola di introduzione dell'or a sinistra
 
  . we need to prove Z ∈ B∪A → Z ∈ A∪B
    --suppongo Z ∈ B∪A e dimostriamo Z ∈ A∪B
@@ -588,12 +589,12 @@ theorem union_symmetric: ∀A B, A∪B = B∪A := by
    by ax_union2 it suffices to prove Z∈ A ∨ Z∈B
    --Andiamo per casi su H
    we proceed by cases on H to prove Z∈ A ∨ Z∈B
-   . case a.mpr.a.inl (H: Z∈B)
+   . case left (L: Z∈B)
      we need to prove Z∈ A ∨ Z∈B --Introduzione dell'or a destra
-     by H done
-   . case a.mpr.a.inr (H: Z∈A)
+     by L done
+   . case right (R: Z∈A)
      we need to prove Z∈ A ∨ Z∈B --Introduzione dell'or a sinistra
-     by H done
+     by R done
 
 
 -- Esercizio 16: l'insieme vuoto è elemento neutro per l'unione
@@ -610,9 +611,9 @@ theorem union_emptyset: ∀A, A∪∅ = A := by
    --Da Z ∈ A∪∅ e l'assioma dell'unione sappiamo che...
    thus by ax_union1 we proved Z∈A ∨ Z∈∅ as H
    we proceed by cases on H to prove Z ∈ A --Eliminazione di ∨
-   . case a.mp.inl (K: Z ∈ A)
+   . case left (K: Z ∈ A)
      thus done
-   . case a.mp.inr (K: Z ∈ ∅)
+   . case right (K: Z ∈ ∅)
      thus by ax_empty done
  . we need to prove Z ∈ A → Z ∈ A∪∅
    suppose Z ∈ A
@@ -695,10 +696,10 @@ theorem intersect_union₁: ∀A B C, A∩(B∪C) ⊆ A∩B ∪ A∩C := by
  --Dall'assioma dell'unione e Z∈B∪C abbiamo che Z∈B ∨ Z∈C
  thus by ax_union1 we proved Z∈B ∨ Z∈C as H₂'
  we proceed by cases on H₂' to prove Z ∈ A∩B ∪ A∩C
- . case inl (K: Z∈B)
+ . case left (K: Z∈B)
    thus by H₁, ax_intersect2 we proved Z ∈ A∩B
    thus by ax_union2 done
- . case inr (K: Z∈C)
+ . case right (K: Z∈C)
    thus by H₁, ax_intersect2 we proved Z ∈ A∩C
    thus by ax_union2 done
 
