@@ -11,6 +11,10 @@ macro "or_e" h:term:max ppSpace colGt l1:ident ppSpace colGt l2:ident : tactic =
 
 macro "and_e" h:term:max ppSpace colGt l1:ident ppSpace colGt l2:ident : tactic =>
  `(tactic|refine And.casesOn $h (fun $l1 $l2 => ?_))
+
+macro "exists_e" h:term:max ppSpace colGt l1:ident ppSpace colGt l2:ident : tactic =>
+ `(tactic|refine Exists.casesOn $h (fun $l1 $l2 => ?_))
+
 -- ══════════════════════════════════════════════════════════════════
 -- ATTIVA I WIDGET
 -- ══════════════════════════════════════════════════════════════════
@@ -18,14 +22,13 @@ show_panel_widgets [NDTreeJsonViewerWidget]
 
 set_option pp.proofs true
 
-theorem foo2 (A : Prop) (h : A ∧ C) : A ∧ C := by
+theorem foo2 (A C : Prop) (h : A ∧ C) : A ∧ C := by
   exact h
 
 theorem ImplIntroElim {A P Q R : Prop} (h: P -> Q) (p: A → R → P) (a : A) : R -> Q := by
  intro r
  apply h (p a r)
 
--- CSC XXX Bug applicazione multipla
 theorem impmul (P Q R: Prop) (h: P → Q → R) : P → Q → R := by
   intro p q
   apply h p q
@@ -39,15 +42,6 @@ theorem Andleft (P Q : Prop) (h : P ∧ Q) : P := by
 
 theorem Andleft1 (P Q : Prop) (h : P ∧ Q) : P := by
  apply h.1
-
-def mytintro : A → B → A := by
-  intro a
-  intro b
-  exact a
-/-
-theorem foo' : A → B → A := by
- apply mytintro -- questo potrebbe essere interessante da controllare
--/
 
 theorem Andright (P Q : Prop) (h : P ∧ Q) : Q := by
  apply And.right h
@@ -106,10 +100,6 @@ theorem NotElim (P : Prop) (h1 : ¬P) (h2 : P) : False := by
 theorem NotElim' (P : Prop) (h1 : ¬P) (h2 : P) : False := by
   apply absurd h2 h1
 
-
-theorem funzionera (P:Prop) (h1: ¬P → P) (h2: ¬P) : P := by
-  apply h1 h2
-
 theorem foo (A B C D : Prop) (h1: (A ∧ B) ∧ (C ∧ D)) : A ∧ C := by
   have h2 : A ∧ B := And.left h1
   have a : A := And.left h2
@@ -145,8 +135,23 @@ theorem iffTest' (A B: Prop) (h: A ↔ B) : A → B := by
 theorem IffTest'' (A B: Prop) (h : A ↔ B) : B ↔ A := by
   exact h.symm
 
-theorem forallTest' (A: Prop) : A → A := by
-  intro a
-  exact a
+theorem ExIntroElim (A : Type) (P : A -> Prop) (H: ∃x, P x) : ∃y, P y := by
+  exists_e H w K
+  apply Exists.intro w
+  -- CSC: bug here
+  assumption
+
+theorem topIntro : True := by
+  apply True.intro
+  -- CSC: bug here
+
+theorem topElim (H: True) : True := by
+  cases H
+  apply True.intro
+  -- CSC: bugs here
+
+theorem falseElim {A: Prop} (H: False) : A := by
+  cases H
+  -- CSC: bugs here
 
 show_panel_widgets [- NDTreeJsonViewerWidget]

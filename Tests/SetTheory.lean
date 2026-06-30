@@ -566,7 +566,6 @@ theorem union_symmetric: ∀A B, A∪B = B∪A := by
    thus by ax_union1 we proved Z∈A ∨ Z∈B as H
    /- H (Z∈A ∨ Z∈B) è un ipotesi di tipo OR, per utilizzarla quindi è necessario diramare la dimostrazione
       In un ramo avremo Z∈A e nell'altro Z∈B -/
-   /- XXX -/
    we proceed by cases on H to prove Z ∈ B∪A  -- ∨-eliminazione
    . case left (L: Z∈A) -- guardate dove il nome del caso a.mp.inl compare nella finestra di destra
      we need to prove Z ∈ B∪A
@@ -827,18 +826,6 @@ theorem powerset_intersection₂: ∀A B, ℘ A ∩ ℘ B ⊆ ℘ (A ∩ B) := b
 
 -- non cancellare la seguente riga, utile per la correzione automatica
 #check powerset_intersection₂
-
-theorem foo₁ : ∀ A, A ⊆ A → True := by
-  intros A H
-  -- let h₂ : ∀ Z, Z ∈ A → Z ∈ A := H
-  let h₂ := @id (∀ Z, Z ∈ A → Z ∈ A) H
-  -- change ∀ Z, Z ∈ A -> Z ∈ A at H
-  constructor
-
-set_option pp.explicit true
-set_option pp.all true
-in
-#print foo₁
 
 show_panel_widgets [- NDTreeJsonViewerWidget]
 

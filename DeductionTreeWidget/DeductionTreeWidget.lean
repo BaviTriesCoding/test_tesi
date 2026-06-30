@@ -410,11 +410,16 @@ def NDTreeJsonViewerWidget : Widget.Module where
 /-
 ═══════════════════════════════════════════════════════════════════
 TODO:
-[_] esercizi 17 e 20: variabili #0 da fissare
+[_] Impossibile trovare il nodo a questa posizione (Loaded: 11:41:32 AM)
+    quando non c'è una prova
+[_] a inizio prova dopo il By errore ⚠ unknown metavariable `?0`
+[_] esercizi 17 e 20 e ExIntroElim test: variabili #0 da fissare
 [_] aggiungere in Rules tests su exists
 [_] rivedere completamente tutti i casi con lambda assenti
 [_] eliminare/fissare caso Ex.elim e/o fare lo stesso con gli
     altri connettivi
+[_] implementare top_i rule come True.intro
+[_] implementare top_e rule
 [_] gestione ex. 4 iff_e
 [_] consistenza ex, 10 (usare barra vuota per le ipotesi che sono teoremi già dimostrati)
 [_] in ExprInfo reimplementare e.isArrow perchè violiamo precondizione di non occorrenza delle bvar e quindi alcuni diventano forall; il bug sembra esserci anche per la resa dei nodi (ma può avere una causa diversa)
