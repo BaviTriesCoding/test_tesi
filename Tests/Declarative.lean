@@ -12,6 +12,9 @@ macro "or_e_no_names" h:term:max : tactic =>
 macro "and_e" h:term:max ppSpace colGt l1:ident ppSpace colGt l2:ident : tactic =>
  `(tactic|refine And.casesOn $h (fun $l1 $l2 => ?_))
 
+macro "exists_e" h:term:max ppSpace colGt l1:ident ppSpace colGt l2:ident : tactic =>
+ `(tactic|refine Exists.casesOn $h (fun $l1 $l2 => ?_))
+
 syntax "_last_hypothesis_" : term
 
 elab_rules : term
@@ -97,7 +100,7 @@ macro_rules
   | `(tactic | we proved $term₁ as $ident₁ and $term₂ as $ident₂) =>
     `(tactic | we proved $term₁ ∧ $term₂ <;> and_e _last_hypothesis_ $ident₁:ident $ident₂:ident)
   | `(tactic | $mj:matitaJust let $ident₁ : $term₁ such that $term₂ as $ident₂) =>
-    `(tactic | $mj:matitaJust we proved ∃$ident₁:ident : $term₁, $term₂ <;> cases _last_hypothesis_ <;> case' _ $ident₁:ident $ident₂:ident => skip)
+    `(tactic | $mj:matitaJust we proved ∃$ident₁:ident : $term₁, $term₂ <;> exists_e _last_hypothesis_ $ident₁:ident $ident₂:ident)
   | `(tactic | let $ident₁ : $term₁ such that $term₂ as $ident₂) =>
     `(tactic | we proved ∃$ident₁:ident : $term₁, $term₂ <;> cases _last_hypothesis_ <;> case' _ $ident₁:ident $ident₂:ident => skip)
 

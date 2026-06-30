@@ -281,9 +281,15 @@ partial def Lean.Expr.toNDTreeM (e : Expr) (withHyp := true) (rootHyps : List Hy
   | (.const `Exists.elim _), arg0::arg1::_ =>
     return .node hyps formula "∃E" [← arg0.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps) (currentGoal := currentGoal), ← arg1.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps) (currentGoal := currentGoal)]
 
+  | (.const `Exists.casesOn _), exArg::(.lam n t (.lam n' t' b bi') bi)::_ => do
+    withLocalDecl n bi t fun fv => do
+      let b' := b.instantiate1 fv
+      withLocalDecl n' bi' t' fun fv' => do
+        let b'' := b'.instantiate1 fv'
+        return .node hyps formula "∃E" [← exArg.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps) (currentGoal := currentGoal), ← b''.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps) (currentGoal := currentGoal)]
+
   | (.const `Exists.casesOn _), arg0::arg1::_ =>
     return .node hyps formula "∃E" [← arg0.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps) (currentGoal := currentGoal), ← arg1.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps) (currentGoal := currentGoal)]
-
 
   | (.const `Iff.intro _), arg0::arg1::_ => do
     return .node hyps formula "↔I" [← arg0.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps) (currentGoal := currentGoal), ← arg1.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps) (currentGoal := currentGoal)]
@@ -404,6 +410,11 @@ def NDTreeJsonViewerWidget : Widget.Module where
 /-
 ═══════════════════════════════════════════════════════════════════
 TODO:
+[_] esercizi 17 e 20: variabili #0 da fissare
+[_] aggiungere in Rules tests su exists
+[_] rivedere completamente tutti i casi con lambda assenti
+[_] eliminare/fissare caso Ex.elim e/o fare lo stesso con gli
+    altri connettivi
 [_] gestione ex. 4 iff_e
 [_] consistenza ex, 10 (usare barra vuota per le ipotesi che sono teoremi già dimostrati)
 [_] in ExprInfo reimplementare e.isArrow perchè violiamo precondizione di non occorrenza delle bvar e quindi alcuni diventano forall; il bug sembra esserci anche per la resa dei nodi (ma può avere una causa diversa)
