@@ -90,7 +90,7 @@ const Leaf = ({
       {
         className: "formula",
         style: {
-          color: "green",
+          color: "#0ecb00",
           background: selected
             ? `color-mix(in srgb, ${ACCENT}, rgba(255,255,255,0.1))`
             : "transparent",
@@ -137,26 +137,26 @@ const Node = ({
 
   useLayoutEffect(() => {
     const firstFormula = document
-      .querySelector(`#${uniqueId}0 > .formula`)
-      .getBoundingClientRect();
+      ?.querySelector(`#${uniqueId}0 > .formula`)
+      ?.getBoundingClientRect();
     const lastFormula = document
-      .querySelector(`#${uniqueId}${children.length - 1} > .formula`)
-      .getBoundingClientRect();
+      ?.querySelector(`#${uniqueId}${children.length - 1} > .formula`)
+      ?.getBoundingClientRect();
     const parentFormula = document
-      .querySelector(`#${uniqueId} > .formula`)
-      .getBoundingClientRect();
+      ?.querySelector(`#${uniqueId} > .formula`)
+      ?.getBoundingClientRect();
     const lineWidth = Math.max(
-      lastFormula.right - firstFormula.left,
-      parentFormula.width,
+      ((lastFormula?.right - firstFormula?.left) || 0),
+      parentFormula?.width,
     );
     const marginLeft =
-      firstFormula.left -
-      (parentFormula.left + parentFormula.width / 2 - lineWidth / 2);
+      firstFormula?.left -
+      (parentFormula?.left + parentFormula?.width / 2 - lineWidth / 2) || 0;
 
     setLineInfo({
       width: lineWidth,
       marginLeft:
-        parentFormula.width >= lastFormula.right - firstFormula.left
+        parentFormula?.width >= ((lastFormula?.right - firstFormula?.left) || 0)
           ? 0
           : 2 * marginLeft,
     });
@@ -440,7 +440,7 @@ const HypothesesDisplay = () => {
           "span",
           {
             style: {
-              color: hyp.value.type === "leaf" ? "green" : WHITE,
+              color: hyp.value.type === "leaf" ? "#0ecb00" : WHITE,
             },
           },
           `${hyp.value?.isDischarged ? "[" : ""}${hyp.name ? hyp.name + " : " : ""}${hyp.value.formula}${hyp.value?.isDischarged ? "]" : ""}`,

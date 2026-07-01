@@ -144,16 +144,18 @@ partial def Lean.Expr.toNDTreeM (e : Expr) (withHyp := true) (rootHyps : List Hy
     return match (← inferType (← inferType arg)) with
     | .sort (.succ _) => none
     | _ => some arg)
-  /- -- debug purpose
+  -- debug purpose
+  /-
   let fnPrintable := ← exprInfo fn
   let mut argsPrintable : List String := []
   for arg in args do
     argsPrintable := argsPrintable ++ [s!"{(← exprInfo arg)}"]
-  --dbg_trace s!"{fnPrintable} : {argsPrintable}"
+  -- dbg_trace s!"{fnPrintable} : {argsPrintable}"
   -- -/
   let hyps ← if withHyp then getHypoteses (rootHyps := rootHyps) else pure []
   let formula := s!"{← ppExpr (← inferType e)}"
   match fn, args with
+
   -- ↓ casi normalmente impossibili ↓
 
   | (.forallE _ _ _ _ ), _  => throwError ".forallE unexpected in a proof"
@@ -163,9 +165,14 @@ partial def Lean.Expr.toNDTreeM (e : Expr) (withHyp := true) (rootHyps : List Hy
   | (.sort _), _            => throwError ".sort unexpected in a proof"
 
   | (.lit _), _             => throwError ".lit unexpected in a proof"
+
   -- ↓ foglie ↓
 
-  | (.const (.str _ n) _), [] => return .leaf hyps n.toName formula ( isTreeDischarged (.leaf hyps n.toName formula false))
+  | (.const `True.intro _), _ => do
+    return .node hyps formula "⊤I" []
+
+  | (.const (.str _ n) _), [] => return .node hyps formula n []
+
 
   | (.fvar id), [] => do
       let decl ← Meta.getFVarLocalDecl (.fvar id)
@@ -175,6 +182,7 @@ partial def Lean.Expr.toNDTreeM (e : Expr) (withHyp := true) (rootHyps : List Hy
 
 
   | (.const `sorryAx _), _ => return .leaf hyps `sorryAx "sorry" false
+
   -- ↓ nodi aperti ↓
 
   | (.mvar mmmid), _ => do
@@ -286,7 +294,16 @@ partial def Lean.Expr.toNDTreeM (e : Expr) (withHyp := true) (rootHyps : List Hy
       let b' := b.instantiate1 fv
       withLocalDecl n' bi' t' fun fv' => do
         let b'' := b'.instantiate1 fv'
-        return .node hyps formula "∃E" [← exArg.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps) (currentGoal := currentGoal), ← b''.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps) (currentGoal := currentGoal)]
+        return .node hyps formula "∃E" [
+          ← exArg.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps) (currentGoal := currentGoal),
+          ← b''.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps) (currentGoal := currentGoal)]
+
+  | (.const `Exists.casesOn _), exArg::(.lam n t b bi)::_ => do
+    withLocalDecl n bi t fun fv => do
+      let b' := b.instantiate1 fv
+      return .node hyps formula "∃E" [
+        ← exArg.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps) (currentGoal := currentGoal),
+        ← b'.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps) (currentGoal := currentGoal)]
 
   | (.const `Exists.casesOn _), arg0::arg1::_ =>
     return .node hyps formula "∃E" [← arg0.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps) (currentGoal := currentGoal), ← arg1.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps) (currentGoal := currentGoal)]
@@ -300,29 +317,16 @@ partial def Lean.Expr.toNDTreeM (e : Expr) (withHyp := true) (rootHyps : List Hy
   | (.const `Iff.mpr _), arg::_ => do
     return .node hyps formula "↔E₂" [← arg.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps) (currentGoal := currentGoal)]
 
-  /- -- stavo guardando i vari casi di utilizzo di Iff.intro e si usa sempre suppose manualmente, e `we need to prove A → B`, quindi direi di lasciarlo senza la semplificazione
-  | (.const `Iff.intro _), (.lam nl tl bl bil)::(.lam nr tr br bir)::_ => do
-    let childL ← withLocalDecl nl bil tl fun fvl => do
-      let bl' := bl.instantiate1 fvl
-      bl'.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps) (currentGoal := currentGoal)
-    let childR ← withLocalDecl nr bir tr fun fvr => do
-      let br' := br.instantiate1 fvr
-      br'.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps) (currentGoal := currentGoal)
-    return .node hyps formula "↔I" [childL, childR]
+  | (.const `matita.iff_e _), arg::_ => do
+    return .node hyps formula "↔E" [← arg.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps) (currentGoal := currentGoal)]
 
-  | (.const `Iff.intro _), _::(.lam nr tr br bir)::_ => do
-    let childR ← withLocalDecl nr bir tr fun fvr => do
-      let br' := br.instantiate1 fvr
-      br'.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps) (currentGoal := currentGoal)
-    return .node hyps formula "↔I" [(NDTree.unhandled), childR]
-    -- return .node hyps formula "↔I" [← arg0.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps) (currentGoal := currentGoal), childR]
+  | (.const `False.casesOn _), _ => do
+    let children ← args.mapM fun arg =>  arg.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps) (currentGoal := currentGoal)
+    return .node hyps formula "⊥E" (children)
 
-  | (.const `Iff.intro _), (.lam nl tl bl bil)::_::_ => do
-    let childL ← withLocalDecl nl bil tl fun fvl => do
-      let bl' := bl.instantiate1 fvl
-      bl'.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps) (currentGoal := currentGoal)
-    return .node hyps formula "↔I" [childL, (NDTree.unhandled)]
-    -- return .node hyps formula "↔I" [childL, ← arg1.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps) (currentGoal := currentGoal)]-/
+  | (.const `True.casesOn _), _ => do
+    let children ← args.mapM fun arg =>  arg.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps) (currentGoal := currentGoal)
+    return .node hyps formula "⊤E" (children)
 
   | fn, args => do
       let children ← args.mapM fun arg =>  arg.toNDTreeM (withHyp := withHyp) (rootHyps := rootHyps) (currentGoal := currentGoal)
@@ -410,18 +414,13 @@ def NDTreeJsonViewerWidget : Widget.Module where
 /-
 ═══════════════════════════════════════════════════════════════════
 TODO:
-[_] Impossibile trovare il nodo a questa posizione (Loaded: 11:41:32 AM)
-    quando non c'è una prova
+[_] Impossibile trovare il nodo a questa posizione (Loaded: 11:41:32 AM) quando non c'è una prova
 [_] a inizio prova dopo il By errore ⚠ unknown metavariable `?0`
 [_] esercizi 17 e 20 e ExIntroElim test: variabili #0 da fissare
 [_] aggiungere in Rules tests su exists
 [_] rivedere completamente tutti i casi con lambda assenti
-[_] eliminare/fissare caso Ex.elim e/o fare lo stesso con gli
-    altri connettivi
-[_] implementare top_i rule come True.intro
+[_] eliminare/fissare caso Ex.elim e/o fare lo stesso con gli altri connettivi
 [_] implementare top_e rule
-[_] gestione ex. 4 iff_e
-[_] consistenza ex, 10 (usare barra vuota per le ipotesi che sono teoremi già dimostrati)
 [_] in ExprInfo reimplementare e.isArrow perchè violiamo precondizione di non occorrenza delle bvar e quindi alcuni diventano forall; il bug sembra esserci anche per la resa dei nodi (ma può avere una causa diversa)
 ════════════════════════════════════════════════════════════════════
 DONE:
@@ -444,5 +443,8 @@ DONE:
 [✓] ∀ non testato
 [✓] evitare di mostrare il namespace dentro i nomi
 [✓] problemi nei nomi (es. set_theory.set†)
+[✓] implementare top_i rule come True.intro
+[✓] consistenza ex, 10 (usare barra vuota per le ipotesi che sono teoremi già dimostrati)
+[✓] gestione ex. 4 iff_e
 ════════════════════════════════════════════════════════════════════
 -/

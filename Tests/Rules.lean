@@ -136,14 +136,13 @@ theorem IffTest'' (A B: Prop) (h : A ↔ B) : B ↔ A := by
   exact h.symm
 
 theorem ExIntroElim (A : Type) (P : A -> Prop) (H: ∃x, P x) : ∃y, P y := by
-  exists_e H w K
-  apply Exists.intro w
+  exists_e H d hyp
+  apply Exists.intro d
   -- CSC: bug here
   assumption
 
 theorem topIntro : True := by
   apply True.intro
-  -- CSC: bug here
 
 theorem topElim (H: True) : True := by
   cases H
